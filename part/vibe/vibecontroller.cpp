@@ -45,6 +45,15 @@ VibeController::~VibeController()
     m_db.close();
 }
 
+void VibeController::toggleCardsVisible(bool visible)
+{
+    m_cardsVisible = visible;
+    const auto items = m_pageView->items();
+    for (auto *item : items) {
+        item->setVibeCardsVisible(visible);
+    }
+}
+
 void VibeController::reloadConfig()
 {
     QSettings settings(QStringLiteral("okular-vibe"), QStringLiteral("okular-vibe"));

@@ -40,6 +40,7 @@ public Q_SLOTS:
     void parseCurrentPage();
     void retryCurrentPageSummary();
     void parseAllPages();
+    void toggleCardsVisible(bool visible);
     void reloadConfig();
 
 private Q_SLOTS:
@@ -69,6 +70,7 @@ private:
     // Parse-all-pages state
     QList<int> m_allPagesQueue;
     bool m_parsingAllPages = false;
+    bool m_cardsVisible = false;
 };
 
 } // namespace Vibe
