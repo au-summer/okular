@@ -51,6 +51,7 @@ private Q_SLOTS:
     void onLlmError(const QString &error);
 
 private:
+    bool loadCachedCardsForPage(int pageIdx);
     void processPageWithLlm(int pageIdx, const QList<ParagraphData> &paragraphs);
     void createCardsForPage(int pageIdx, const QList<ParagraphData> &paragraphs);
     void clearCardsForPage(int pageIdx);

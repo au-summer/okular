@@ -1003,9 +1003,16 @@ void Part::setupActions()
         }
     });
 
+    auto *vibeToggleAction = new QAction(QIcon::fromTheme(QStringLiteral("view-visible")), i18n("Show/Hide Cards"), vibeMenu);
+    vibeToggleAction->setCheckable(true);
+    vibeToggleAction->setChecked(false);
+    connect(vibeToggleAction, &QAction::toggled, m_vibeController, &Vibe::VibeController::toggleCardsVisible);
+
     vibeMenu->addAction(vibeParseAction);
     vibeMenu->addAction(vibeParseAllAction);
     vibeMenu->addAction(vibeRetryAction);
+    vibeMenu->menu()->addSeparator();
+    vibeMenu->addAction(vibeToggleAction);
     vibeMenu->menu()->addSeparator();
     vibeMenu->addAction(vibeSettingsAction);
     vibeMenu->setDefaultAction(vibeParseAction);

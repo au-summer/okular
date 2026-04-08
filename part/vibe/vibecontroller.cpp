@@ -48,8 +48,21 @@ VibeController::~VibeController()
 void VibeController::toggleCardsVisible(bool visible)
 {
     m_cardsVisible = visible;
+
+    if (!m_document || m_document->pages() == 0) {
+        return;
+    }
+
+    const QString filePath = m_document->currentDocument().toLocalFile();
+    if (!filePath.isEmpty() && m_currentPaperId < 0) {
+        m_currentPaperId = m_db.getOrCreatePaper(filePath);
+    }
+
     const auto items = m_pageView->items();
     for (auto *item : items) {
+        if (visible && item->vibeCards().isEmpty() && m_currentPaperId >= 0) {
+            loadCachedCardsForPage(item->pageNumber());
+        }
         item->setVibeCardsVisible(visible);
     }
 }
@@ -79,6 +92,33 @@ void VibeController::reloadConfig()
     qDebug() << "[VibeController] Config reloaded, model:" << llmConfig.model;
 }
 
+bool VibeController::loadCachedCardsForPage(int pageIdx)
+{
+    if (m_currentPaperId < 0) {
+        return false;
+    }
+
+    QList<SummaryCardData> existingCards = m_db.getSummaryCards(m_currentPaperId, pageIdx);
+    if (existingCards.isEmpty()) {
+        return false;
+    }
+
+    QList<ParagraphData> paragraphs;
+    for (const auto &card : existingCards) {
+        ParagraphData p;
+        p.paragraphIdx = card.paragraphIdx;
+        p.summary = card.paragraphSummary;
+        p.points = card.points;
+        p.bbox = card.anchorRect;
+        p.isLeftColumn = card.isLeftColumn;
+        paragraphs.append(p);
+    }
+    clearCardsForPage(pageIdx);
+    createCardsForPage(pageIdx, paragraphs);
+    qDebug() << "[VibeController] Loaded" << existingCards.size() << "cached cards for page" << pageIdx;
+    return true;
+}
+
 void VibeController::parseCurrentPage()
 {
     if (!m_document || m_document->pages() == 0) {
@@ -99,25 +139,8 @@ void VibeController::parseCurrentPage()
     }
 
     // Check if we already have summary cards for this page (fully processed)
-    if (m_currentPaperId >= 0) {
-        QList<SummaryCardData> existingCards = m_db.getSummaryCards(m_currentPaperId, pageIdx);
-        if (!existingCards.isEmpty()) {
-            // Rebuild from DB
-            QList<ParagraphData> paragraphs;
-            for (const auto &card : existingCards) {
-                ParagraphData p;
-                p.paragraphIdx = card.paragraphIdx;
-                p.summary = card.paragraphSummary;
-                p.points = card.points;
-                p.bbox = card.anchorRect;
-                p.isLeftColumn = card.isLeftColumn;
-                paragraphs.append(p);
-            }
-            clearCardsForPage(pageIdx);
-            createCardsForPage(pageIdx, paragraphs);
-            qDebug() << "[VibeController] Loaded" << existingCards.size() << "existing cards for page" << pageIdx;
-            return;
-        }
+    if (m_currentPaperId >= 0 && loadCachedCardsForPage(pageIdx)) {
+        return;
     }
 
     // Check if we have MinerU paragraphs for this page (parsed but not yet LLM-processed)
