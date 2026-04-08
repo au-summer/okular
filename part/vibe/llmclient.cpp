@@ -118,7 +118,13 @@ void LlmClient::requestPageSummary(int pageIdx, const QList<ParagraphData> &para
     QJsonArray messages;
     QJsonObject systemMsg;
     systemMsg[QStringLiteral("role")] = QStringLiteral("system");
-    systemMsg[QStringLiteral("content")] = QStringLiteral("You are an academic paper analysis assistant. Always respond with valid JSON.");
+    QString systemContent = QStringLiteral("You are an academic paper analysis assistant. Always respond with valid JSON.");
+    if (m_config.language == QLatin1String("zh")) {
+        systemContent += QStringLiteral(
+            "\nIMPORTANT: Write all summaries and point descriptions in Chinese (简体中文). "
+            "Keep technical terms, proper nouns, and abbreviations in English.");
+    }
+    systemMsg[QStringLiteral("content")] = systemContent;
     messages.append(systemMsg);
 
     QJsonObject userMsg;
