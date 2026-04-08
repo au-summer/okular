@@ -179,7 +179,7 @@ void VibeController::parseCurrentPage()
     m_mineruClient->parseDocument(filePath);
 }
 
-void VibeController::retryCurrentPageSummary()
+void VibeController::retryCurrentPage()
 {
     if (!m_document || m_document->pages() == 0) {
         return;
@@ -277,6 +277,48 @@ void VibeController::parseAllPages()
 
     m_parsingAllPages = true;
     m_pageView->displayMessage(QStringLiteral("Parsing all pages: %1 pages remaining...").arg(m_allPagesQueue.size()));
+    processNextQueuedPage();
+}
+
+void VibeController::retryAllPages()
+{
+    if (!m_document || m_document->pages() == 0) {
+        return;
+    }
+
+    if (m_parsingAllPages) {
+        m_pageView->displayMessage(QStringLiteral("Already parsing all pages..."));
+        return;
+    }
+
+    const QString filePath = m_document->currentDocument().toLocalFile();
+    if (!filePath.isEmpty() && m_currentPaperId < 0) {
+        m_currentPaperId = m_db.getOrCreatePaper(filePath);
+    }
+
+    if (m_currentPaperId < 0) {
+        m_pageView->displayMessage(QStringLiteral("No parsed data. Run Parse All Pages first."));
+        return;
+    }
+
+    // Delete LLM data and rebuild queue for all pages that have MinerU paragraphs
+    m_allPagesQueue.clear();
+    for (uint p = 0; p < m_document->pages(); ++p) {
+        QList<ParagraphData> paragraphs = m_db.getParagraphs(m_currentPaperId, p);
+        if (!paragraphs.isEmpty()) {
+            m_db.deleteLlmDataForPage(m_currentPaperId, p);
+            clearCardsForPage(p);
+            m_allPagesQueue.append(p);
+        }
+    }
+
+    if (m_allPagesQueue.isEmpty()) {
+        m_pageView->displayMessage(QStringLiteral("No pages with parsed data to retry."));
+        return;
+    }
+
+    m_parsingAllPages = true;
+    m_pageView->displayMessage(QStringLiteral("Retrying all pages: %1 pages remaining...").arg(m_allPagesQueue.size()));
     processNextQueuedPage();
 }
 

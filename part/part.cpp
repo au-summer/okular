@@ -992,8 +992,11 @@ void Part::setupActions()
     auto *vibeParseAllAction = new QAction(QIcon::fromTheme(QStringLiteral("run-build")), i18n("Parse All Pages"), vibeMenu);
     connect(vibeParseAllAction, &QAction::triggered, m_vibeController, &Vibe::VibeController::parseAllPages);
 
-    auto *vibeRetryAction = new QAction(QIcon::fromTheme(QStringLiteral("view-refresh")), i18n("Retry Page Summary"), vibeMenu);
-    connect(vibeRetryAction, &QAction::triggered, m_vibeController, &Vibe::VibeController::retryCurrentPageSummary);
+    auto *vibeRetryAction = new QAction(QIcon::fromTheme(QStringLiteral("view-refresh")), i18n("Retry Current Page"), vibeMenu);
+    connect(vibeRetryAction, &QAction::triggered, m_vibeController, &Vibe::VibeController::retryCurrentPage);
+
+    auto *vibeRetryAllAction = new QAction(QIcon::fromTheme(QStringLiteral("view-refresh")), i18n("Retry All Pages"), vibeMenu);
+    connect(vibeRetryAllAction, &QAction::triggered, m_vibeController, &Vibe::VibeController::retryAllPages);
 
     auto *vibeSettingsAction = new QAction(QIcon::fromTheme(QStringLiteral("configure")), i18n("Vibe AI Settings..."), vibeMenu);
     connect(vibeSettingsAction, &QAction::triggered, this, [this]() {
@@ -1011,6 +1014,7 @@ void Part::setupActions()
     vibeMenu->addAction(vibeParseAction);
     vibeMenu->addAction(vibeParseAllAction);
     vibeMenu->addAction(vibeRetryAction);
+    vibeMenu->addAction(vibeRetryAllAction);
     vibeMenu->menu()->addSeparator();
     vibeMenu->addAction(vibeToggleAction);
     vibeMenu->menu()->addSeparator();

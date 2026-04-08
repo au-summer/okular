@@ -38,8 +38,9 @@ public:
 
 public Q_SLOTS:
     void parseCurrentPage();
-    void retryCurrentPageSummary();
+    void retryCurrentPage();
     void parseAllPages();
+    void retryAllPages();
     void toggleCardsVisible(bool visible);
     void reloadConfig();
 
