@@ -76,6 +76,11 @@ void VibeController::parseCurrentPage()
         return;
     }
 
+    if (m_parsingAllPages) {
+        m_pageView->displayMessage(QStringLiteral("Please wait, parsing all pages..."));
+        return;
+    }
+
     const int pageIdx = m_document->currentPage();
 
     // Ensure paper is registered in DB
@@ -142,6 +147,125 @@ void VibeController::parseCurrentPage()
     m_mineruClient->parseDocument(filePath);
 }
 
+void VibeController::retryCurrentPageSummary()
+{
+    if (!m_document || m_document->pages() == 0) {
+        return;
+    }
+
+    if (m_parsingAllPages) {
+        m_pageView->displayMessage(QStringLiteral("Please wait, parsing all pages..."));
+        return;
+    }
+
+    const int pageIdx = m_document->currentPage();
+
+    const QString filePath = m_document->currentDocument().toLocalFile();
+    if (!filePath.isEmpty() && m_currentPaperId < 0) {
+        m_currentPaperId = m_db.getOrCreatePaper(filePath);
+    }
+
+    if (m_currentPaperId < 0) {
+        m_pageView->displayMessage(QStringLiteral("No parsed data. Run Parse Current Page first."));
+        return;
+    }
+
+    QList<ParagraphData> paragraphs = m_db.getParagraphs(m_currentPaperId, pageIdx);
+    if (paragraphs.isEmpty()) {
+        m_pageView->displayMessage(QStringLiteral("No parsed data for this page. Run Parse Current Page first."));
+        return;
+    }
+
+    // Delete LLM data from DB, keep MinerU paragraphs
+    m_db.deleteLlmDataForPage(m_currentPaperId, pageIdx);
+
+    // Clear summaries and points on the loaded data
+    for (auto &p : paragraphs) {
+        p.summary.clear();
+        p.points.clear();
+    }
+
+    clearCardsForPage(pageIdx);
+    processPageWithLlm(pageIdx, paragraphs);
+}
+
+void VibeController::parseAllPages()
+{
+    if (!m_document || m_document->pages() == 0) {
+        return;
+    }
+
+    if (m_parsingAllPages) {
+        m_pageView->displayMessage(QStringLiteral("Already parsing all pages..."));
+        return;
+    }
+
+    const QString filePath = m_document->currentDocument().toLocalFile();
+    if (!filePath.isEmpty() && m_currentPaperId < 0) {
+        m_currentPaperId = m_db.getOrCreatePaper(filePath);
+    }
+
+    // Check if MinerU data exists
+    bool anyPageHasData = false;
+    if (m_currentPaperId >= 0) {
+        for (uint p = 0; p < m_document->pages(); ++p) {
+            if (!m_db.getParagraphs(m_currentPaperId, p).isEmpty()) {
+                anyPageHasData = true;
+                break;
+            }
+        }
+    }
+
+    if (!anyPageHasData) {
+        // Need MinerU parse first, then parse all pages
+        if (filePath.isEmpty()) {
+            qWarning() << "[VibeController] Cannot get local file path for MinerU parsing";
+            return;
+        }
+        m_parsingAllPages = true;
+        m_pendingLlmPageIdx = -1;
+        m_pageView->displayMessage(QStringLiteral("Starting MinerU document parsing (all pages)..."));
+        m_mineruClient->parseDocument(filePath);
+        return;
+    }
+
+    // MinerU data exists, build queue of pages without summary cards
+    m_allPagesQueue.clear();
+    for (uint p = 0; p < m_document->pages(); ++p) {
+        if (!m_db.getParagraphs(m_currentPaperId, p).isEmpty()
+            && m_db.getSummaryCards(m_currentPaperId, p).isEmpty()) {
+            m_allPagesQueue.append(p);
+        }
+    }
+
+    if (m_allPagesQueue.isEmpty()) {
+        m_pageView->displayMessage(QStringLiteral("All pages already processed."));
+        return;
+    }
+
+    m_parsingAllPages = true;
+    m_pageView->displayMessage(QStringLiteral("Parsing all pages: %1 pages remaining...").arg(m_allPagesQueue.size()));
+    processNextQueuedPage();
+}
+
+void VibeController::processNextQueuedPage()
+{
+    while (!m_allPagesQueue.isEmpty()) {
+        int pageIdx = m_allPagesQueue.takeFirst();
+        QList<ParagraphData> paragraphs = m_db.getParagraphs(m_currentPaperId, pageIdx);
+        if (!paragraphs.isEmpty()) {
+            m_pageView->displayMessage(QStringLiteral("Parsing page %1 (%2 remaining)...")
+                .arg(pageIdx + 1).arg(m_allPagesQueue.size()));
+            processPageWithLlm(pageIdx, paragraphs);
+            return;
+        }
+    }
+
+    // Queue exhausted
+    m_parsingAllPages = false;
+    m_pageView->displayMessage(QStringLiteral("All pages processed."));
+}
+
 void VibeController::onDocumentReady(const QMap<int, QList<ParagraphData>> &pagesParagraphs)
 {
     qDebug() << "[VibeController] MinerU parsed" << pagesParagraphs.size() << "pages";
@@ -153,7 +277,21 @@ void VibeController::onDocumentReady(const QMap<int, QList<ParagraphData>> &page
         }
     }
 
-    // Now process the page the user originally requested
+    // If parsing all pages, build the queue and start
+    if (m_parsingAllPages) {
+        m_allPagesQueue.clear();
+        for (auto it = pagesParagraphs.constBegin(); it != pagesParagraphs.constEnd(); ++it) {
+            if (!it.value().isEmpty() && m_db.getSummaryCards(m_currentPaperId, it.key()).isEmpty()) {
+                m_allPagesQueue.append(it.key());
+            }
+        }
+        std::sort(m_allPagesQueue.begin(), m_allPagesQueue.end());
+        m_pageView->displayMessage(QStringLiteral("Parsing all pages: %1 pages to process...").arg(m_allPagesQueue.size()));
+        processNextQueuedPage();
+        return;
+    }
+
+    // Otherwise process the single page the user originally requested
     if (m_pendingLlmPageIdx >= 0 && pagesParagraphs.contains(m_pendingLlmPageIdx)) {
         processPageWithLlm(m_pendingLlmPageIdx, pagesParagraphs[m_pendingLlmPageIdx]);
     } else if (m_pendingLlmPageIdx >= 0) {
@@ -168,6 +306,10 @@ void VibeController::onMinerUError(const QString &error)
     qWarning() << "[VibeController] MinerU error:" << error;
     QMessageBox::warning(m_pageView, tr("MinerU Error"), error);
     m_pendingLlmPageIdx = -1;
+    if (m_parsingAllPages) {
+        m_parsingAllPages = false;
+        m_allPagesQueue.clear();
+    }
 }
 
 void VibeController::onMinerUProgress(const QString &status)
@@ -225,6 +367,11 @@ void VibeController::onPageSummaryReady(int pageIdx, const QList<ParagraphLlmRes
     createCardsForPage(pageIdx, m_pendingParagraphs);
     m_pendingParagraphs.clear();
     m_pendingLlmPageIdx = -1;
+
+    // Continue processing queued pages
+    if (m_parsingAllPages) {
+        processNextQueuedPage();
+    }
 }
 
 void VibeController::onLlmError(const QString &error)
@@ -232,6 +379,10 @@ void VibeController::onLlmError(const QString &error)
     qWarning() << "[VibeController] LLM error:" << error;
     QMessageBox::warning(m_pageView, tr("AI Parse Error"), error);
     m_pendingLlmPageIdx = -1;
+    if (m_parsingAllPages) {
+        m_parsingAllPages = false;
+        m_allPagesQueue.clear();
+    }
 }
 
 void VibeController::createCardsForPage(int pageIdx, const QList<ParagraphData> &paragraphs)

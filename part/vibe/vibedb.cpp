@@ -273,6 +273,34 @@ QList<PointData> VibeDB::getPoints(int paragraphId)
     return result;
 }
 
+void VibeDB::deleteLlmDataForPage(int paperId, int pageIdx)
+{
+    QSqlQuery q(m_db);
+
+    // Delete summary_cards for this page
+    q.prepare(QStringLiteral("DELETE FROM summary_cards WHERE paper_id = ? AND page_idx = ?"));
+    q.addBindValue(paperId);
+    q.addBindValue(pageIdx);
+    q.exec();
+
+    // Delete points for paragraphs on this page
+    q.prepare(QStringLiteral(
+        "DELETE FROM points WHERE paragraph_id IN "
+        "(SELECT id FROM paragraphs WHERE paper_id = ? AND page_idx = ?)"));
+    q.addBindValue(paperId);
+    q.addBindValue(pageIdx);
+    q.exec();
+
+    // Clear LLM-generated summary from paragraphs (keep text, bbox, etc.)
+    q.prepare(QStringLiteral(
+        "UPDATE paragraphs SET paragraph_summary = NULL WHERE paper_id = ? AND page_idx = ?"));
+    q.addBindValue(paperId);
+    q.addBindValue(pageIdx);
+    q.exec();
+
+    qDebug() << "[VibeDB] Deleted LLM data for paper" << paperId << "page" << pageIdx;
+}
+
 void VibeDB::saveSummaryCard(int paperId, int pageIdx, int paragraphId, const Okular::NormalizedRect &anchor, bool isLeftColumn)
 {
     QSqlQuery q(m_db);

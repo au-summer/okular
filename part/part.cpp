@@ -122,6 +122,7 @@
 #include "signaturepanel.h"
 #include "thumbnaillist.h"
 #include "toc.h"
+#include "toggleactionmenu.h"
 #include "vibe/vibeconfigdialog.h"
 #include "vibe/vibecontroller.h"
 
@@ -981,20 +982,35 @@ void Part::setupActions()
     ac->addAction(QStringLiteral("presentation_play_pause"), playPauseAction);
     playPauseAction->setEnabled(false);
 
-    // Vibe AI Parse action
-    QAction *vibeParseAction = new QAction(QIcon::fromTheme(QStringLiteral("tools-wizard")), i18n("AI Parse"), ac);
-    ac->addAction(QStringLiteral("vibe_ai_parse"), vibeParseAction);
+    // Vibe AI menu
+    auto *vibeMenu = new ToggleActionMenu(QIcon::fromTheme(QStringLiteral("tools-wizard")), i18n("Vibe AI"), this);
+    vibeMenu->setPopupMode(QToolButton::MenuButtonPopup);
+
+    auto *vibeParseAction = new QAction(QIcon::fromTheme(QStringLiteral("tools-wizard")), i18n("Parse Current Page"), vibeMenu);
     connect(vibeParseAction, &QAction::triggered, m_vibeController, &Vibe::VibeController::parseCurrentPage);
 
-    // Vibe Settings action
-    QAction *vibeSettingsAction = new QAction(QIcon::fromTheme(QStringLiteral("configure")), i18n("Vibe AI Settings..."), ac);
-    ac->addAction(QStringLiteral("vibe_settings"), vibeSettingsAction);
+    auto *vibeParseAllAction = new QAction(QIcon::fromTheme(QStringLiteral("run-build")), i18n("Parse All Pages"), vibeMenu);
+    connect(vibeParseAllAction, &QAction::triggered, m_vibeController, &Vibe::VibeController::parseAllPages);
+
+    auto *vibeRetryAction = new QAction(QIcon::fromTheme(QStringLiteral("view-refresh")), i18n("Retry Page Summary"), vibeMenu);
+    connect(vibeRetryAction, &QAction::triggered, m_vibeController, &Vibe::VibeController::retryCurrentPageSummary);
+
+    auto *vibeSettingsAction = new QAction(QIcon::fromTheme(QStringLiteral("configure")), i18n("Vibe AI Settings..."), vibeMenu);
     connect(vibeSettingsAction, &QAction::triggered, this, [this]() {
         Vibe::VibeConfigDialog dlg(widget());
         if (dlg.exec() == QDialog::Accepted) {
             m_vibeController->reloadConfig();
         }
     });
+
+    vibeMenu->addAction(vibeParseAction);
+    vibeMenu->addAction(vibeParseAllAction);
+    vibeMenu->addAction(vibeRetryAction);
+    vibeMenu->menu()->addSeparator();
+    vibeMenu->addAction(vibeSettingsAction);
+    vibeMenu->setDefaultAction(vibeParseAction);
+
+    ac->addAction(QStringLiteral("vibe_ai_menu"), vibeMenu);
 }
 
 Part::~Part()

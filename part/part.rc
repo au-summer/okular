@@ -89,8 +89,7 @@
     <Action name="speak_stop_all"/>
     <Action name="speak_pause_resume"/>
     <Separator/>
-    <Action name="vibe_ai_parse"/>
-    <Action name="vibe_settings"/>
+    <Action name="vibe_ai_menu"/>
   </Menu>
   <Menu name="settings"><text>&amp;Settings</text>
     <Action name="colorscheme_menu" group="show_merge"/>

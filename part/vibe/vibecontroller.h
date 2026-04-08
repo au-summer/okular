@@ -38,6 +38,8 @@ public:
 
 public Q_SLOTS:
     void parseCurrentPage();
+    void retryCurrentPageSummary();
+    void parseAllPages();
     void reloadConfig();
 
 private Q_SLOTS:
@@ -51,6 +53,7 @@ private:
     void processPageWithLlm(int pageIdx, const QList<ParagraphData> &paragraphs);
     void createCardsForPage(int pageIdx, const QList<ParagraphData> &paragraphs);
     void clearCardsForPage(int pageIdx);
+    void processNextQueuedPage();
 
     Okular::Document *m_document;
     PageView *m_pageView;
@@ -62,6 +65,10 @@ private:
 
     // Paragraphs waiting for LLM results
     QList<ParagraphData> m_pendingParagraphs;
+
+    // Parse-all-pages state
+    QList<int> m_allPagesQueue;
+    bool m_parsingAllPages = false;
 };
 
 } // namespace Vibe

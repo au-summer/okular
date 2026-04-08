@@ -35,6 +35,7 @@ public:
     QList<SummaryCardData> getSummaryCards(int paperId, int pageIdx);
 
     int getParagraphDbId(int paperId, int pageIdx, int paragraphIdx);
+    void deleteLlmDataForPage(int paperId, int pageIdx);
 
 private:
     void createTables();
