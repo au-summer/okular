@@ -30,6 +30,7 @@ public:
     void setPointsCard(PointsCard *card);
 
     void updatePosition(const QRect &uncroppedGeometry, double scaleFactor, const QPoint &viewportOffset = QPoint(0, 0));
+    void reloadFontConfig();
 
     bool isLeftColumn() const { return m_isLeftColumn; }
     const Okular::NormalizedRect &anchorRect() const { return m_anchorRect; }
@@ -43,6 +44,8 @@ private:
     Okular::NormalizedRect m_anchorRect;
     bool m_isLeftColumn = true;
     bool m_loading = false;
+    int m_baseFontSize = 8;
+    double m_lastScaleFactor = -1;
 };
 
 } // namespace Vibe

@@ -27,12 +27,15 @@ public:
     void setLeftColumn(bool isLeft);
 
     void updatePosition(const QRect &uncroppedGeometry, const SummaryCard *summaryCard, double scaleFactor, const QPoint &viewportOffset = QPoint(0, 0));
+    void reloadFontConfig();
 
     bool isLeftColumn() const { return m_isLeftColumn; }
 
 private:
     QVBoxLayout *m_layout;
     bool m_isLeftColumn = true;
+    int m_baseFontSize = 7;
+    double m_lastScaleFactor = -1;
 };
 
 } // namespace Vibe

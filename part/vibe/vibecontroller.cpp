@@ -89,6 +89,19 @@ void VibeController::reloadConfig()
     mineruConfig.apiToken = settings.value(QStringLiteral("mineruToken")).toString().trimmed();
     m_mineruClient->setConfig(mineruConfig);
 
+    // Reload font config on existing cards
+    const auto items = m_pageView->items();
+    for (auto *item : items) {
+        for (auto &pair : item->vibeCards()) {
+            if (pair.summary) {
+                pair.summary->reloadFontConfig();
+            }
+            if (pair.points) {
+                pair.points->reloadFontConfig();
+            }
+        }
+    }
+
     qDebug() << "[VibeController] Config reloaded, model:" << llmConfig.model;
 }
 

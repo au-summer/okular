@@ -40,6 +40,7 @@ SummaryCard::SummaryCard(QWidget *parent)
     setMaximumWidth(300);
     setMinimumWidth(80);
     setCursor(Qt::PointingHandCursor);
+    reloadFontConfig();
 }
 
 void SummaryCard::setSummary(const QString &summary)
@@ -74,25 +75,31 @@ void SummaryCard::setPointsCard(PointsCard *card)
     m_pointsCard = card;
 }
 
+void SummaryCard::reloadFontConfig()
+{
+    QSettings settings(QStringLiteral("okular-vibe"), QStringLiteral("okular-vibe"));
+    m_baseFontSize = settings.value(QStringLiteral("summaryFontSize"), 8).toInt();
+    m_lastScaleFactor = -1; // force style update on next reposition
+}
+
 void SummaryCard::updatePosition(const QRect &uncroppedGeometry, double scaleFactor, const QPoint &viewportOffset)
 {
-    // Scale font and dimensions with zoom, matching Vibero's approach
-    QSettings settings(QStringLiteral("okular-vibe"), QStringLiteral("okular-vibe"));
-    const int baseFontSize = settings.value(QStringLiteral("summaryFontSize"), 8).toInt();
-    const int fontSize = qMax(6, qRound(baseFontSize * scaleFactor));
-    const int padding = qMax(2, qRound(4 * scaleFactor));
-    const int maxW = qRound(300 * scaleFactor);
-    const int minW = qMax(40, qRound(80 * scaleFactor));
+    // Only recompute style when zoom changes
+    if (scaleFactor != m_lastScaleFactor) {
+        m_lastScaleFactor = scaleFactor;
+        const int fontSize = qMax(6, qRound(m_baseFontSize * scaleFactor));
+        const int padding = qMax(2, qRound(4 * scaleFactor));
 
-    if (m_loading) {
-        m_label->setStyleSheet(QStringLiteral("font-style: italic; font-size: %1px; color: #999;").arg(fontSize));
-    } else {
-        m_label->setStyleSheet(QStringLiteral("font-weight: bold; font-size: %1px; color: #333;").arg(fontSize));
+        if (m_loading) {
+            m_label->setStyleSheet(QStringLiteral("font-style: italic; font-size: %1px; color: #999;").arg(fontSize));
+        } else {
+            m_label->setStyleSheet(QStringLiteral("font-weight: bold; font-size: %1px; color: #333;").arg(fontSize));
+        }
+        setContentsMargins(padding, padding, padding, padding);
+        setMaximumWidth(qRound(300 * scaleFactor));
+        setMinimumWidth(qMax(40, qRound(80 * scaleFactor)));
+        adjustSize();
     }
-    setContentsMargins(padding, padding, padding, padding);
-    setMaximumWidth(maxW);
-    setMinimumWidth(minW);
-    adjustSize();
 
     const int gap = qRound(4 * scaleFactor);
     int cardWidth = sizeHint().width();
