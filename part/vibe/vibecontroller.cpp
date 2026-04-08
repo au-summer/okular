@@ -252,6 +252,7 @@ void VibeController::createCardsForPage(int pageIdx, const QList<ParagraphData> 
 
     QWidget *viewport = m_pageView->viewport();
     const QRect &uncroppedGeo = targetItem->uncroppedGeometry();
+    const double zoom = targetItem->zoomFactor();
     const QPoint vpOffset(m_pageView->horizontalScrollBar()->value(), m_pageView->verticalScrollBar()->value());
 
     for (const auto &para : paragraphs) {
@@ -277,8 +278,8 @@ void VibeController::createCardsForPage(int pageIdx, const QList<ParagraphData> 
 
         summaryCard->setPointsCard(pointsCard);
 
-        summaryCard->updatePosition(uncroppedGeo, vpOffset);
-        pointsCard->updatePosition(uncroppedGeo, summaryCard, vpOffset);
+        summaryCard->updatePosition(uncroppedGeo, zoom, vpOffset);
+        pointsCard->updatePosition(uncroppedGeo, summaryCard, zoom, vpOffset);
 
         targetItem->addVibeCardPair(summaryCard, pointsCard);
 

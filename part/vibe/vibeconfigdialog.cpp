@@ -11,6 +11,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QSettings>
+#include <QSpinBox>
 #include <QVBoxLayout>
 
 using namespace Vibe;
@@ -60,6 +61,19 @@ VibeConfigDialog::VibeConfigDialog(QWidget *parent)
     m_mineruTokenEdit->setPlaceholderText(tr("(or set VIBE_MINERU_TOKEN env var)"));
     form->addRow(tr("MinerU Token:"), m_mineruTokenEdit);
 
+    // Card font sizes
+    m_summaryFontSizeSpin = new QSpinBox(this);
+    m_summaryFontSizeSpin->setRange(4, 32);
+    m_summaryFontSizeSpin->setValue(8);
+    m_summaryFontSizeSpin->setSuffix(QStringLiteral(" px"));
+    form->addRow(tr("Summary card font size:"), m_summaryFontSizeSpin);
+
+    m_pointsFontSizeSpin = new QSpinBox(this);
+    m_pointsFontSizeSpin->setRange(4, 32);
+    m_pointsFontSizeSpin->setValue(7);
+    m_pointsFontSizeSpin->setSuffix(QStringLiteral(" px"));
+    form->addRow(tr("Points card font size:"), m_pointsFontSizeSpin);
+
     layout->addLayout(form);
 
     auto *hint = new QLabel(tr("Environment variables take precedence over these settings."), this);
@@ -89,6 +103,9 @@ void VibeConfigDialog::loadSettings()
     if (!model.isEmpty()) {
         m_modelCombo->setCurrentText(model);
     }
+
+    m_summaryFontSizeSpin->setValue(settings.value(QStringLiteral("summaryFontSize"), 8).toInt());
+    m_pointsFontSizeSpin->setValue(settings.value(QStringLiteral("pointsFontSize"), 7).toInt());
 }
 
 void VibeConfigDialog::saveSettings()
@@ -98,6 +115,8 @@ void VibeConfigDialog::saveSettings()
     settings.setValue(QStringLiteral("model"), m_modelCombo->currentText().trimmed());
     settings.setValue(QStringLiteral("baseUrl"), m_baseUrlEdit->text().trimmed());
     settings.setValue(QStringLiteral("mineruToken"), m_mineruTokenEdit->text().trimmed());
+    settings.setValue(QStringLiteral("summaryFontSize"), m_summaryFontSizeSpin->value());
+    settings.setValue(QStringLiteral("pointsFontSize"), m_pointsFontSizeSpin->value());
 }
 
 QString VibeConfigDialog::openAiApiKey() const

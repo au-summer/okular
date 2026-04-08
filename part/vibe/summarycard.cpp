@@ -8,6 +8,7 @@
 
 #include <QLabel>
 #include <QMouseEvent>
+#include <QSettings>
 #include <QVBoxLayout>
 #include <QtMath>
 
@@ -32,7 +33,7 @@ SummaryCard::SummaryCard(QWidget *parent)
 
     m_label = new QLabel(this);
     m_label->setWordWrap(true);
-    m_label->setStyleSheet(QStringLiteral("font-weight: bold; font-size: 11px; color: #333;"));
+    m_label->setStyleSheet(QStringLiteral("font-weight: bold; color: #333;"));
     m_label->setText(tr("Summarizing..."));
     layout->addWidget(m_label);
 
@@ -49,11 +50,12 @@ void SummaryCard::setSummary(const QString &summary)
 
 void SummaryCard::setLoading(bool loading)
 {
+    m_loading = loading;
     if (loading) {
         m_label->setText(tr("Summarizing..."));
-        m_label->setStyleSheet(QStringLiteral("font-style: italic; font-size: 11px; color: #999;"));
+        m_label->setStyleSheet(QStringLiteral("font-style: italic; color: #999;"));
     } else {
-        m_label->setStyleSheet(QStringLiteral("font-weight: bold; font-size: 11px; color: #333;"));
+        m_label->setStyleSheet(QStringLiteral("font-weight: bold; color: #333;"));
     }
 }
 
@@ -72,11 +74,27 @@ void SummaryCard::setPointsCard(PointsCard *card)
     m_pointsCard = card;
 }
 
-void SummaryCard::updatePosition(const QRect &uncroppedGeometry, const QPoint &viewportOffset)
+void SummaryCard::updatePosition(const QRect &uncroppedGeometry, double scaleFactor, const QPoint &viewportOffset)
 {
-    const int gap = 4;
+    // Scale font and dimensions with zoom, matching Vibero's approach
+    QSettings settings(QStringLiteral("okular-vibe"), QStringLiteral("okular-vibe"));
+    const int baseFontSize = settings.value(QStringLiteral("summaryFontSize"), 8).toInt();
+    const int fontSize = qMax(6, qRound(baseFontSize * scaleFactor));
+    const int padding = qMax(2, qRound(4 * scaleFactor));
+    const int maxW = qRound(300 * scaleFactor);
+    const int minW = qMax(40, qRound(80 * scaleFactor));
 
+    if (m_loading) {
+        m_label->setStyleSheet(QStringLiteral("font-style: italic; font-size: %1px; color: #999;").arg(fontSize));
+    } else {
+        m_label->setStyleSheet(QStringLiteral("font-weight: bold; font-size: %1px; color: #333;").arg(fontSize));
+    }
+    setContentsMargins(padding, padding, padding, padding);
+    setMaximumWidth(maxW);
+    setMinimumWidth(minW);
     adjustSize();
+
+    const int gap = qRound(4 * scaleFactor);
     int cardWidth = sizeHint().width();
 
     int y = uncroppedGeometry.y() + qRound(m_anchorRect.top * uncroppedGeometry.height()) - viewportOffset.y();

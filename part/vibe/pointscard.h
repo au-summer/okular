@@ -26,7 +26,7 @@ public:
     void setPoints(const QList<PointData> &points);
     void setLeftColumn(bool isLeft);
 
-    void updatePosition(const QRect &uncroppedGeometry, const SummaryCard *summaryCard, const QPoint &viewportOffset = QPoint(0, 0));
+    void updatePosition(const QRect &uncroppedGeometry, const SummaryCard *summaryCard, double scaleFactor, const QPoint &viewportOffset = QPoint(0, 0));
 
     bool isLeftColumn() const { return m_isLeftColumn; }
 

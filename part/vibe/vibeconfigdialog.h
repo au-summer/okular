@@ -10,6 +10,7 @@
 
 class QLineEdit;
 class QComboBox;
+class QSpinBox;
 
 namespace Vibe
 {
@@ -34,6 +35,8 @@ private:
     QComboBox *m_modelCombo;
     QLineEdit *m_baseUrlEdit;
     QLineEdit *m_mineruTokenEdit;
+    QSpinBox *m_summaryFontSizeSpin;
+    QSpinBox *m_pointsFontSizeSpin;
 };
 
 } // namespace Vibe

@@ -7,6 +7,7 @@
 #include "summarycard.h"
 
 #include <QLabel>
+#include <QSettings>
 #include <QVBoxLayout>
 
 using namespace Vibe;
@@ -57,14 +58,32 @@ void PointsCard::setLeftColumn(bool isLeft)
     m_isLeftColumn = isLeft;
 }
 
-void PointsCard::updatePosition(const QRect &uncroppedGeometry, const SummaryCard *summaryCard, const QPoint &viewportOffset)
+void PointsCard::updatePosition(const QRect &uncroppedGeometry, const SummaryCard *summaryCard, double scaleFactor, const QPoint &viewportOffset)
 {
     Q_UNUSED(uncroppedGeometry)
     Q_UNUSED(viewportOffset)
 
+    // Scale font and dimensions with zoom
+    QSettings settings(QStringLiteral("okular-vibe"), QStringLiteral("okular-vibe"));
+    const int baseFontSize = settings.value(QStringLiteral("pointsFontSize"), 7).toInt();
+    const int fontSize = qMax(6, qRound(baseFontSize * scaleFactor));
+    const int padding = qMax(2, qRound(4 * scaleFactor));
+    const int maxW = qRound(300 * scaleFactor);
+    const int minW = qMax(40, qRound(80 * scaleFactor));
+
+    // Update all child labels' font size
+    for (int i = 0; i < m_layout->count(); ++i) {
+        if (auto *label = qobject_cast<QLabel *>(m_layout->itemAt(i)->widget())) {
+            label->setStyleSheet(QStringLiteral("font-size: %1px; color: #555; padding: 1px 0;").arg(fontSize));
+        }
+    }
+    setContentsMargins(padding, padding, padding, padding);
+    setMaximumWidth(maxW);
+    setMinimumWidth(minW);
     adjustSize();
+
     int cardWidth = sizeHint().width();
-    const int gap = 4;
+    const int gap = qRound(4 * scaleFactor);
 
     int y = summaryCard->y();
 
