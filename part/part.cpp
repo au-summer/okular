@@ -122,6 +122,8 @@
 #include "signaturepanel.h"
 #include "thumbnaillist.h"
 #include "toc.h"
+#include "vibe/vibeconfigdialog.h"
+#include "vibe/vibecontroller.h"
 
 #include <memory>
 #include <type_traits>
@@ -495,6 +497,7 @@ Part::Part(QObject *parent, const QVariantList &args)
     m_pageView = new PageView(rightContainer, m_document);
     rightContainer->setFocusProxy(m_pageView);
     QMetaObject::invokeMethod(m_pageView, "setFocus", Qt::QueuedConnection); // usability setting
+    m_vibeController = new Vibe::VibeController(m_document, m_pageView, this);
     //    m_splitter->setFocusProxy(m_pageView);
     connect(m_pageView.data(), &PageView::rightClick, this, &Part::slotShowMenu);
     connect(m_pageView, &PageView::triggerSearch, this, [this](const QString &searchText) {
@@ -977,6 +980,21 @@ void Part::setupActions()
     QAction *playPauseAction = new QAction(i18n("Play/Pause Presentation"), ac);
     ac->addAction(QStringLiteral("presentation_play_pause"), playPauseAction);
     playPauseAction->setEnabled(false);
+
+    // Vibe AI Parse action
+    QAction *vibeParseAction = new QAction(QIcon::fromTheme(QStringLiteral("tools-wizard")), i18n("AI Parse"), ac);
+    ac->addAction(QStringLiteral("vibe_ai_parse"), vibeParseAction);
+    connect(vibeParseAction, &QAction::triggered, m_vibeController, &Vibe::VibeController::parseCurrentPage);
+
+    // Vibe Settings action
+    QAction *vibeSettingsAction = new QAction(QIcon::fromTheme(QStringLiteral("configure")), i18n("Vibe AI Settings..."), ac);
+    ac->addAction(QStringLiteral("vibe_settings"), vibeSettingsAction);
+    connect(vibeSettingsAction, &QAction::triggered, this, [this]() {
+        Vibe::VibeConfigDialog dlg(widget());
+        if (dlg.exec() == QDialog::Accepted) {
+            m_vibeController->reloadConfig();
+        }
+    });
 }
 
 Part::~Part()

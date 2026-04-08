@@ -4883,6 +4883,7 @@ void PageView::slotRequestVisiblePixmaps(int newValue)
                 vw->pageLeft();
             }
         }
+        i->repositionVibeCards(QPoint(qRound(viewportRect.left()), qRound(viewportRect.top())));
 
         if (!i->isVisible()) {
             continue;
@@ -5287,6 +5288,11 @@ void PageView::showNoSigningCertificatesDialog(bool nonDateValidCerts)
 Okular::Document *PageView::document() const
 {
     return d->document;
+}
+
+QList<PageViewItem *> PageView::items() const
+{
+    return d->items;
 }
 
 #if HAVE_NEW_SIGNATURE_API

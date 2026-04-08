@@ -21,6 +21,8 @@
 #include "formwidgets.h"
 #include "settings.h"
 #include "videowidget.h"
+#include "vibe/summarycard.h"
+#include "vibe/pointscard.h"
 
 /*********************/
 /** PageViewItem     */
@@ -39,6 +41,7 @@ PageViewItem::~PageViewItem()
 {
     qDeleteAll(m_formWidgets);
     qDeleteAll(m_videoWidgets);
+    clearVibeCards();
 }
 
 const Okular::Page *PageViewItem::page() const
@@ -185,6 +188,49 @@ void PageViewItem::reloadFormWidgetsState()
 {
     for (FormWidgetIface *fwi : std::as_const(m_formWidgets)) {
         fwi->setVisibility(fwi->formField()->isVisible() && FormWidgetsController::shouldFormWidgetBeShown(fwi->formField()));
+    }
+}
+
+QList<PageViewItem::VibeCardPair> &PageViewItem::vibeCards()
+{
+    return m_vibeCards;
+}
+
+void PageViewItem::addVibeCardPair(Vibe::SummaryCard *summary, Vibe::PointsCard *points)
+{
+    m_vibeCards.append({summary, points});
+}
+
+void PageViewItem::clearVibeCards()
+{
+    for (auto &pair : m_vibeCards) {
+        delete pair.summary;
+        delete pair.points;
+    }
+    m_vibeCards.clear();
+}
+
+void PageViewItem::setVibeCardsVisible(bool visible)
+{
+    for (auto &pair : m_vibeCards) {
+        if (pair.summary) {
+            pair.summary->setVisible(visible);
+        }
+        if (pair.points) {
+            pair.points->setVisible(visible);
+        }
+    }
+}
+
+void PageViewItem::repositionVibeCards(const QPoint &viewportOffset)
+{
+    for (auto &pair : m_vibeCards) {
+        if (pair.summary) {
+            pair.summary->updatePosition(m_uncroppedGeometry, viewportOffset);
+        }
+        if (pair.points && pair.summary) {
+            pair.points->updatePosition(m_uncroppedGeometry, pair.summary, viewportOffset);
+        }
     }
 }
 

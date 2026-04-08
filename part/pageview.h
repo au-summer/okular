@@ -139,6 +139,8 @@ public:
 
     Okular::Document *document() const;
 
+    QList<PageViewItem *> items() const;
+
     void startSigning(Okular::SignatureAnnotation *signatureAnnotation);
 
 public Q_SLOTS:

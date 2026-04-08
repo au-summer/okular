@@ -22,6 +22,12 @@ class FormWidgetIface;
 class PageView;
 class VideoWidget;
 
+namespace Vibe
+{
+class SummaryCard;
+class PointsCard;
+}
+
 namespace Okular
 {
 class Movie;
@@ -79,6 +85,16 @@ public:
     bool setFormWidgetsVisible(bool visible);
     void reloadFormWidgetsState();
 
+    struct VibeCardPair {
+        Vibe::SummaryCard *summary = nullptr;
+        Vibe::PointsCard *points = nullptr;
+    };
+    QList<VibeCardPair> &vibeCards();
+    void addVibeCardPair(Vibe::SummaryCard *summary, Vibe::PointsCard *points);
+    void clearVibeCards();
+    void setVibeCardsVisible(bool visible);
+    void repositionVibeCards(const QPoint &viewportOffset);
+
 private:
     const Okular::Page *m_page;
     double m_zoomFactor;
@@ -89,6 +105,7 @@ private:
     Okular::NormalizedRect m_crop;
     QSet<FormWidgetIface *> m_formWidgets;
     QHash<const Okular::Movie *, VideoWidget *> m_videoWidgets;
+    QList<VibeCardPair> m_vibeCards;
 };
 
 /**
