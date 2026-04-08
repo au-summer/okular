@@ -1007,9 +1007,7 @@ void Part::setupActions()
     });
 
     auto *vibeToggleAction = new QAction(QIcon::fromTheme(QStringLiteral("view-visible")), i18n("Show/Hide Cards"), vibeMenu);
-    vibeToggleAction->setCheckable(true);
-    vibeToggleAction->setChecked(false);
-    connect(vibeToggleAction, &QAction::toggled, m_vibeController, &Vibe::VibeController::toggleCardsVisible);
+    connect(vibeToggleAction, &QAction::triggered, m_vibeController, &Vibe::VibeController::toggleCardsVisible);
 
     vibeMenu->addAction(vibeParseAction);
     vibeMenu->addAction(vibeParseAllAction);

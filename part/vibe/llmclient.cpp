@@ -51,6 +51,7 @@ LlmClient::LlmClient(QObject *parent)
         if (!settingsBase.isEmpty()) {
             m_config.baseUrl = QUrl(settingsBase);
         }
+        m_config.language = settings.value(QStringLiteral("summaryLanguage"), QStringLiteral("en")).toString();
     }
 }
 

@@ -28,14 +28,14 @@ public:
     void saveParagraphs(int paperId, int pageIdx, const QList<ParagraphData> &paragraphs);
     QList<ParagraphData> getParagraphs(int paperId, int pageIdx);
 
-    void savePoints(int paragraphId, const QList<PointData> &points);
-    QList<PointData> getPoints(int paragraphId);
+    void savePoints(int paragraphId, const QString &language, const QList<PointData> &points);
+    QList<PointData> getPoints(int paragraphId, const QString &language);
 
-    void saveSummaryCard(int paperId, int pageIdx, int paragraphId, const Okular::NormalizedRect &anchor, bool isLeftColumn);
-    QList<SummaryCardData> getSummaryCards(int paperId, int pageIdx);
+    void saveSummaryCard(int paperId, int pageIdx, int paragraphId, const Okular::NormalizedRect &anchor, bool isLeftColumn, const QString &language, const QString &paragraphSummary);
+    QList<SummaryCardData> getSummaryCards(int paperId, int pageIdx, const QString &language);
 
     int getParagraphDbId(int paperId, int pageIdx, int paragraphIdx);
-    void deleteLlmDataForPage(int paperId, int pageIdx);
+    void deleteLlmDataForPage(int paperId, int pageIdx, const QString &language);
 
 private:
     void createTables();

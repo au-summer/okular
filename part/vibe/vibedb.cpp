@@ -92,7 +92,8 @@ void VibeDB::createTables()
         "  point_summary TEXT,"
         "  sentence_indices_json TEXT,"
         "  importance_level INTEGER DEFAULT 1,"
-        "  UNIQUE(paragraph_id, point_idx),"
+        "  language TEXT DEFAULT 'en',"
+        "  UNIQUE(paragraph_id, point_idx, language),"
         "  FOREIGN KEY(paragraph_id) REFERENCES paragraphs(id)"
         ")"
     ));
@@ -105,6 +106,8 @@ void VibeDB::createTables()
         "  paragraph_id INTEGER NOT NULL,"
         "  position_json TEXT,"
         "  is_left_column INTEGER DEFAULT 1,"
+        "  language TEXT DEFAULT 'en',"
+        "  paragraph_summary TEXT,"
         "  created_at TEXT DEFAULT (datetime('now')),"
         "  updated_at TEXT DEFAULT (datetime('now')),"
         "  FOREIGN KEY(paper_id) REFERENCES papers(id),"
@@ -193,11 +196,6 @@ QList<ParagraphData> VibeDB::getParagraphs(int paperId, int pageIdx)
 
         p.isLeftColumn = q.value(4).toInt() != 0;
 
-        int dbId = getParagraphDbId(paperId, pageIdx, p.paragraphIdx);
-        if (dbId >= 0) {
-            p.points = getPoints(dbId);
-        }
-
         result.append(p);
     }
     return result;
@@ -218,12 +216,12 @@ int VibeDB::getParagraphDbId(int paperId, int pageIdx, int paragraphIdx)
     return -1;
 }
 
-void VibeDB::savePoints(int paragraphId, const QList<PointData> &points)
+void VibeDB::savePoints(int paragraphId, const QString &language, const QList<PointData> &points)
 {
     QSqlQuery q(m_db);
     q.prepare(QStringLiteral(
-        "INSERT OR REPLACE INTO points (paragraph_id, point_idx, point_summary, sentence_indices_json, importance_level) "
-        "VALUES (?, ?, ?, ?, ?)"
+        "INSERT OR REPLACE INTO points (paragraph_id, point_idx, point_summary, sentence_indices_json, importance_level, language) "
+        "VALUES (?, ?, ?, ?, ?, ?)"
     ));
 
     for (const auto &pt : points) {
@@ -237,6 +235,7 @@ void VibeDB::savePoints(int paragraphId, const QList<PointData> &points)
         }
         q.addBindValue(QString::fromUtf8(QJsonDocument(indices).toJson(QJsonDocument::Compact)));
         q.addBindValue(pt.importanceLevel);
+        q.addBindValue(language);
 
         if (!q.exec()) {
             qWarning() << "[VibeDB] Failed to save point:" << q.lastError().text();
@@ -244,15 +243,16 @@ void VibeDB::savePoints(int paragraphId, const QList<PointData> &points)
     }
 }
 
-QList<PointData> VibeDB::getPoints(int paragraphId)
+QList<PointData> VibeDB::getPoints(int paragraphId, const QString &language)
 {
     QList<PointData> result;
     QSqlQuery q(m_db);
     q.prepare(QStringLiteral(
         "SELECT point_idx, point_summary, sentence_indices_json, importance_level "
-        "FROM points WHERE paragraph_id = ? ORDER BY point_idx"
+        "FROM points WHERE paragraph_id = ? AND language = ? ORDER BY point_idx"
     ));
     q.addBindValue(paragraphId);
+    q.addBindValue(language);
 
     if (!q.exec()) {
         return result;
@@ -273,40 +273,35 @@ QList<PointData> VibeDB::getPoints(int paragraphId)
     return result;
 }
 
-void VibeDB::deleteLlmDataForPage(int paperId, int pageIdx)
+void VibeDB::deleteLlmDataForPage(int paperId, int pageIdx, const QString &language)
 {
     QSqlQuery q(m_db);
 
-    // Delete summary_cards for this page
-    q.prepare(QStringLiteral("DELETE FROM summary_cards WHERE paper_id = ? AND page_idx = ?"));
+    // Delete summary_cards for this page and language
+    q.prepare(QStringLiteral("DELETE FROM summary_cards WHERE paper_id = ? AND page_idx = ? AND language = ?"));
     q.addBindValue(paperId);
     q.addBindValue(pageIdx);
+    q.addBindValue(language);
     q.exec();
 
-    // Delete points for paragraphs on this page
+    // Delete points for paragraphs on this page and language
     q.prepare(QStringLiteral(
-        "DELETE FROM points WHERE paragraph_id IN "
+        "DELETE FROM points WHERE language = ? AND paragraph_id IN "
         "(SELECT id FROM paragraphs WHERE paper_id = ? AND page_idx = ?)"));
+    q.addBindValue(language);
     q.addBindValue(paperId);
     q.addBindValue(pageIdx);
     q.exec();
 
-    // Clear LLM-generated summary from paragraphs (keep text, bbox, etc.)
-    q.prepare(QStringLiteral(
-        "UPDATE paragraphs SET paragraph_summary = NULL WHERE paper_id = ? AND page_idx = ?"));
-    q.addBindValue(paperId);
-    q.addBindValue(pageIdx);
-    q.exec();
-
-    qDebug() << "[VibeDB] Deleted LLM data for paper" << paperId << "page" << pageIdx;
+    qDebug() << "[VibeDB] Deleted LLM data for paper" << paperId << "page" << pageIdx << "language" << language;
 }
 
-void VibeDB::saveSummaryCard(int paperId, int pageIdx, int paragraphId, const Okular::NormalizedRect &anchor, bool isLeftColumn)
+void VibeDB::saveSummaryCard(int paperId, int pageIdx, int paragraphId, const Okular::NormalizedRect &anchor, bool isLeftColumn, const QString &language, const QString &paragraphSummary)
 {
     QSqlQuery q(m_db);
     q.prepare(QStringLiteral(
-        "INSERT INTO summary_cards (paper_id, page_idx, paragraph_id, position_json, is_left_column) "
-        "VALUES (?, ?, ?, ?, ?)"
+        "INSERT INTO summary_cards (paper_id, page_idx, paragraph_id, position_json, is_left_column, language, paragraph_summary) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)"
     ));
     q.addBindValue(paperId);
     q.addBindValue(pageIdx);
@@ -319,25 +314,28 @@ void VibeDB::saveSummaryCard(int paperId, int pageIdx, int paragraphId, const Ok
     posObj[QStringLiteral("bottom")] = anchor.bottom;
     q.addBindValue(QString::fromUtf8(QJsonDocument(posObj).toJson(QJsonDocument::Compact)));
     q.addBindValue(isLeftColumn ? 1 : 0);
+    q.addBindValue(language);
+    q.addBindValue(paragraphSummary);
 
     if (!q.exec()) {
         qWarning() << "[VibeDB] Failed to save summary card:" << q.lastError().text();
     }
 }
 
-QList<SummaryCardData> VibeDB::getSummaryCards(int paperId, int pageIdx)
+QList<SummaryCardData> VibeDB::getSummaryCards(int paperId, int pageIdx, const QString &language)
 {
     QList<SummaryCardData> result;
     QSqlQuery q(m_db);
     q.prepare(QStringLiteral(
-        "SELECT sc.id, sc.paragraph_id, p.paragraph_idx, p.paragraph_summary, sc.position_json, sc.is_left_column "
+        "SELECT sc.id, sc.paragraph_id, p.paragraph_idx, sc.paragraph_summary, sc.position_json, sc.is_left_column, sc.language "
         "FROM summary_cards sc "
         "JOIN paragraphs p ON sc.paragraph_id = p.id "
-        "WHERE sc.paper_id = ? AND sc.page_idx = ? "
+        "WHERE sc.paper_id = ? AND sc.page_idx = ? AND sc.language = ? "
         "ORDER BY p.paragraph_idx"
     ));
     q.addBindValue(paperId);
     q.addBindValue(pageIdx);
+    q.addBindValue(language);
 
     if (!q.exec()) {
         return result;
@@ -360,7 +358,7 @@ QList<SummaryCardData> VibeDB::getSummaryCards(int paperId, int pageIdx)
         );
 
         card.isLeftColumn = q.value(5).toInt() != 0;
-        card.points = getPoints(card.paragraphId);
+        card.points = getPoints(card.paragraphId, language);
         result.append(card);
     }
     return result;

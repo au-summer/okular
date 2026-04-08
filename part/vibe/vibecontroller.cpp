@@ -38,6 +38,9 @@ VibeController::VibeController(Okular::Document *doc, PageView *pageView, QObjec
     connect(m_mineruClient, &MinerUClient::progressChanged, this, &VibeController::onMinerUProgress);
 
     m_db.open();
+
+    QSettings settings(QStringLiteral("okular-vibe"), QStringLiteral("okular-vibe"));
+    m_language = settings.value(QStringLiteral("summaryLanguage"), QStringLiteral("en")).toString();
 }
 
 VibeController::~VibeController()
@@ -45,8 +48,9 @@ VibeController::~VibeController()
     m_db.close();
 }
 
-void VibeController::toggleCardsVisible(bool visible)
+void VibeController::toggleCardsVisible()
 {
+    const bool visible = !m_cardsVisible;
     m_cardsVisible = visible;
 
     if (!m_document || m_document->pages() == 0) {
@@ -82,6 +86,17 @@ void VibeController::reloadConfig()
     if (!baseUrl.isEmpty()) {
         llmConfig.baseUrl = QUrl(baseUrl);
     }
+    const QString newLanguage = settings.value(QStringLiteral("summaryLanguage"), QStringLiteral("en")).toString();
+    const bool languageChanged = (newLanguage != m_language);
+    if (languageChanged && (m_parsingAllPages || m_pendingLlmPageIdx >= 0)) {
+        qWarning() << "[VibeController] Cannot change language while parsing is in progress";
+        m_pageView->displayMessage(QStringLiteral("Cannot change language while parsing is in progress."));
+        // Keep old language
+        llmConfig.language = m_language;
+    } else {
+        m_language = newLanguage;
+        llmConfig.language = m_language;
+    }
     m_llmClient->setConfig(llmConfig);
 
     // Reload MinerU config
@@ -89,20 +104,32 @@ void VibeController::reloadConfig()
     mineruConfig.apiToken = settings.value(QStringLiteral("mineruToken")).toString().trimmed();
     m_mineruClient->setConfig(mineruConfig);
 
-    // Reload font config on existing cards
-    const auto items = m_pageView->items();
-    for (auto *item : items) {
-        for (auto &pair : item->vibeCards()) {
-            if (pair.summary) {
-                pair.summary->reloadFontConfig();
+    // If language actually changed, clear all cards and reload for new language
+    const bool didChangeLanguage = (m_language == newLanguage && languageChanged);
+    if (didChangeLanguage) {
+        const auto items = m_pageView->items();
+        for (auto *item : items) {
+            item->clearVibeCards();
+            if (m_cardsVisible && m_currentPaperId >= 0) {
+                loadCachedCardsForPage(item->pageNumber());
             }
-            if (pair.points) {
-                pair.points->reloadFontConfig();
+        }
+    } else {
+        // Just reload font config on existing cards
+        const auto items = m_pageView->items();
+        for (auto *item : items) {
+            for (auto &pair : item->vibeCards()) {
+                if (pair.summary) {
+                    pair.summary->reloadFontConfig();
+                }
+                if (pair.points) {
+                    pair.points->reloadFontConfig();
+                }
             }
         }
     }
 
-    qDebug() << "[VibeController] Config reloaded, model:" << llmConfig.model;
+    qDebug() << "[VibeController] Config reloaded, model:" << llmConfig.model << "language:" << m_language;
 }
 
 bool VibeController::loadCachedCardsForPage(int pageIdx)
@@ -111,7 +138,7 @@ bool VibeController::loadCachedCardsForPage(int pageIdx)
         return false;
     }
 
-    QList<SummaryCardData> existingCards = m_db.getSummaryCards(m_currentPaperId, pageIdx);
+    QList<SummaryCardData> existingCards = m_db.getSummaryCards(m_currentPaperId, pageIdx, m_language);
     if (existingCards.isEmpty()) {
         return false;
     }
@@ -153,6 +180,7 @@ void VibeController::parseCurrentPage()
 
     // Check if we already have summary cards for this page (fully processed)
     if (m_currentPaperId >= 0 && loadCachedCardsForPage(pageIdx)) {
+        m_cardsVisible = true;
         return;
     }
 
@@ -222,7 +250,7 @@ void VibeController::retryCurrentPage()
     }
 
     // Delete LLM data from DB, keep MinerU paragraphs
-    m_db.deleteLlmDataForPage(m_currentPaperId, pageIdx);
+    m_db.deleteLlmDataForPage(m_currentPaperId, pageIdx, m_language);
 
     // Clear summaries and points on the loaded data
     for (auto &p : paragraphs) {
@@ -278,7 +306,7 @@ void VibeController::parseAllPages()
     m_allPagesQueue.clear();
     for (uint p = 0; p < m_document->pages(); ++p) {
         if (!m_db.getParagraphs(m_currentPaperId, p).isEmpty()
-            && m_db.getSummaryCards(m_currentPaperId, p).isEmpty()) {
+            && m_db.getSummaryCards(m_currentPaperId, p, m_language).isEmpty()) {
             m_allPagesQueue.append(p);
         }
     }
@@ -319,7 +347,7 @@ void VibeController::retryAllPages()
     for (uint p = 0; p < m_document->pages(); ++p) {
         QList<ParagraphData> paragraphs = m_db.getParagraphs(m_currentPaperId, p);
         if (!paragraphs.isEmpty()) {
-            m_db.deleteLlmDataForPage(m_currentPaperId, p);
+            m_db.deleteLlmDataForPage(m_currentPaperId, p, m_language);
             clearCardsForPage(p);
             m_allPagesQueue.append(p);
         }
@@ -368,7 +396,7 @@ void VibeController::onDocumentReady(const QMap<int, QList<ParagraphData>> &page
     if (m_parsingAllPages) {
         m_allPagesQueue.clear();
         for (auto it = pagesParagraphs.constBegin(); it != pagesParagraphs.constEnd(); ++it) {
-            if (!it.value().isEmpty() && m_db.getSummaryCards(m_currentPaperId, it.key()).isEmpty()) {
+            if (!it.value().isEmpty() && m_db.getSummaryCards(m_currentPaperId, it.key(), m_language).isEmpty()) {
                 m_allPagesQueue.append(it.key());
             }
         }
@@ -406,6 +434,7 @@ void VibeController::onMinerUProgress(const QString &status)
 
 void VibeController::processPageWithLlm(int pageIdx, const QList<ParagraphData> &paragraphs)
 {
+    m_cardsVisible = true;
     qDebug() << "[VibeController] Sending" << paragraphs.size() << "paragraphs from page" << pageIdx << "to LLM";
 
     m_pendingParagraphs = paragraphs;
@@ -434,16 +463,14 @@ void VibeController::onPageSummaryReady(int pageIdx, const QList<ParagraphLlmRes
         }
     }
 
-    // Save to DB
+    // Save LLM results to DB (paragraphs already saved from MinerU in onDocumentReady)
     if (m_currentPaperId >= 0) {
-        m_db.saveParagraphs(m_currentPaperId, pageIdx, m_pendingParagraphs);
-
         for (const auto &para : m_pendingParagraphs) {
             if (!para.summary.isEmpty()) {
                 int paragraphDbId = m_db.getParagraphDbId(m_currentPaperId, pageIdx, para.paragraphIdx);
                 if (paragraphDbId >= 0) {
-                    m_db.savePoints(paragraphDbId, para.points);
-                    m_db.saveSummaryCard(m_currentPaperId, pageIdx, paragraphDbId, para.bbox, para.isLeftColumn);
+                    m_db.savePoints(paragraphDbId, m_language, para.points);
+                    m_db.saveSummaryCard(m_currentPaperId, pageIdx, paragraphDbId, para.bbox, para.isLeftColumn, m_language, para.summary);
                 }
             }
         }
