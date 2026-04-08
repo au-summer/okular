@@ -17,3 +17,7 @@ CMakeLists.txt.user*
 .flatpak-builder
 build-dir
 .DS_Store
+
+.direnv
+.envrc
+.nix
