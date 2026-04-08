@@ -226,10 +226,10 @@ void PageViewItem::repositionVibeCards(const QPoint &viewportOffset)
 {
     for (auto &pair : m_vibeCards) {
         if (pair.summary) {
-            pair.summary->updatePosition(m_uncroppedGeometry, viewportOffset);
+            pair.summary->updatePosition(m_uncroppedGeometry, m_zoomFactor, viewportOffset);
         }
         if (pair.points && pair.summary) {
-            pair.points->updatePosition(m_uncroppedGeometry, pair.summary, viewportOffset);
+            pair.points->updatePosition(m_uncroppedGeometry, pair.summary, m_zoomFactor, viewportOffset);
         }
     }
 }
