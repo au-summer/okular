@@ -4883,11 +4883,10 @@ void PageView::slotRequestVisiblePixmaps(int newValue)
                 vw->pageLeft();
             }
         }
-        i->repositionVibeCards(QPoint(qRound(viewportRect.left()), qRound(viewportRect.top())));
-
         if (!i->isVisible()) {
             continue;
         }
+        i->repositionVibeCards(QPoint(qRound(viewportRect.left()), qRound(viewportRect.top())));
 #ifdef PAGEVIEW_DEBUG
         qWarning() << "checking page" << i->pageNumber();
         qWarning().nospace() << "viewportRect is " << viewportRect << ", page item is " << i->croppedGeometry() << " intersect : " << viewportRect.intersects(i->croppedGeometry());
