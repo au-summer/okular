@@ -37,6 +37,7 @@ private:
     QLineEdit *m_mineruTokenEdit;
     QSpinBox *m_summaryFontSizeSpin;
     QSpinBox *m_pointsFontSizeSpin;
+    QComboBox *m_languageCombo;
 };
 
 } // namespace Vibe

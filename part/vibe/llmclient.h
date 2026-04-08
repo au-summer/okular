@@ -26,6 +26,7 @@ public:
         QString apiKey;
         QString model = QStringLiteral("gpt-4o-mini");
         QUrl baseUrl = QUrl(QStringLiteral("https://api.openai.com/v1"));
+        QString language = QStringLiteral("en");
     };
 
     explicit LlmClient(QObject *parent = nullptr);

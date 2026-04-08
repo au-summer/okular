@@ -74,6 +74,12 @@ VibeConfigDialog::VibeConfigDialog(QWidget *parent)
     m_pointsFontSizeSpin->setSuffix(QStringLiteral(" px"));
     form->addRow(tr("Points card font size:"), m_pointsFontSizeSpin);
 
+    // Summary language
+    m_languageCombo = new QComboBox(this);
+    m_languageCombo->addItem(QStringLiteral("English"), QStringLiteral("en"));
+    m_languageCombo->addItem(QStringLiteral("Chinese"), QStringLiteral("zh"));
+    form->addRow(tr("Summary language:"), m_languageCombo);
+
     layout->addLayout(form);
 
     auto *hint = new QLabel(tr("Environment variables take precedence over these settings."), this);
@@ -106,6 +112,12 @@ void VibeConfigDialog::loadSettings()
 
     m_summaryFontSizeSpin->setValue(settings.value(QStringLiteral("summaryFontSize"), 8).toInt());
     m_pointsFontSizeSpin->setValue(settings.value(QStringLiteral("pointsFontSize"), 7).toInt());
+
+    const QString lang = settings.value(QStringLiteral("summaryLanguage"), QStringLiteral("en")).toString();
+    int langIdx = m_languageCombo->findData(lang);
+    if (langIdx >= 0) {
+        m_languageCombo->setCurrentIndex(langIdx);
+    }
 }
 
 void VibeConfigDialog::saveSettings()
@@ -117,6 +129,7 @@ void VibeConfigDialog::saveSettings()
     settings.setValue(QStringLiteral("mineruToken"), m_mineruTokenEdit->text().trimmed());
     settings.setValue(QStringLiteral("summaryFontSize"), m_summaryFontSizeSpin->value());
     settings.setValue(QStringLiteral("pointsFontSize"), m_pointsFontSizeSpin->value());
+    settings.setValue(QStringLiteral("summaryLanguage"), m_languageCombo->currentData().toString());
 }
 
 QString VibeConfigDialog::openAiApiKey() const
