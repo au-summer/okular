@@ -234,6 +234,60 @@ void PageViewItem::repositionVibeCards(const QPoint &viewportOffset)
     }
 }
 
+int PageViewItem::vibeCardsLeftOverhang() const
+{
+    int overhang = 0;
+    const int pageLeft = m_uncroppedGeometry.x();
+    const int pageWidth = m_uncroppedGeometry.width();
+    const int gap = qRound(4 * m_zoomFactor);
+
+    for (const auto &pair : m_vibeCards) {
+        if (!pair.summary || !pair.summary->isVisible()) {
+            continue;
+        }
+        if (pair.summary->isLeftColumn()) {
+            int summaryWidth = pair.summary->width();
+            int summaryX = pageLeft + qRound(pair.summary->anchorRect().left * pageWidth) - summaryWidth - gap;
+            int leftEdge = summaryX;
+
+            if (pair.points && pair.points->isVisible()) {
+                int pointsWidth = pair.points->width();
+                leftEdge = summaryX - pointsWidth - gap;
+            }
+
+            overhang = qMax(overhang, pageLeft - leftEdge);
+        }
+    }
+    return overhang;
+}
+
+int PageViewItem::vibeCardsRightOverhang() const
+{
+    int overhang = 0;
+    const int pageRight = m_uncroppedGeometry.x() + m_uncroppedGeometry.width();
+    const int pageWidth = m_uncroppedGeometry.width();
+    const int gap = qRound(4 * m_zoomFactor);
+
+    for (const auto &pair : m_vibeCards) {
+        if (!pair.summary || !pair.summary->isVisible()) {
+            continue;
+        }
+        if (!pair.summary->isLeftColumn()) {
+            int summaryWidth = pair.summary->width();
+            int summaryX = m_uncroppedGeometry.x() + qRound(pair.summary->anchorRect().right * pageWidth) + gap;
+            int rightEdge = summaryX + summaryWidth;
+
+            if (pair.points && pair.points->isVisible()) {
+                int pointsWidth = pair.points->width();
+                rightEdge = summaryX + summaryWidth + gap + pointsWidth;
+            }
+
+            overhang = qMax(overhang, rightEdge - pageRight);
+        }
+    }
+    return overhang;
+}
+
 /*********************/
 /** PageViewMessage  */
 /*********************/

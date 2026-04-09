@@ -695,6 +695,7 @@ void VibeController::createCardsForPage(int pageIdx, const QList<ParagraphData> 
             pointsCard->show();
         }
     }
+    m_pageView->relayoutForVibeCards();
 }
 
 void VibeController::clearCardsForPage(int pageIdx)
@@ -706,4 +707,5 @@ void VibeController::clearCardsForPage(int pageIdx)
             break;
         }
     }
+    m_pageView->relayoutForVibeCards();
 }

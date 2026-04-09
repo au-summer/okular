@@ -94,6 +94,8 @@ public:
     void clearVibeCards();
     void setVibeCardsVisible(bool visible);
     void repositionVibeCards(const QPoint &viewportOffset);
+    int vibeCardsLeftOverhang() const;
+    int vibeCardsRightOverhang() const;
 
 private:
     const Okular::Page *m_page;

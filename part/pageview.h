@@ -140,6 +140,7 @@ public:
     Okular::Document *document() const;
 
     QList<PageViewItem *> items() const;
+    void relayoutForVibeCards();
 
     void startSigning(Okular::SignatureAnnotation *signatureAnnotation);
 

@@ -963,6 +963,11 @@ int PageView::contentAreaHeight() const
     return verticalScrollBar()->maximum() + viewport()->height();
 }
 
+void PageView::relayoutForVibeCards()
+{
+    slotRelayoutPages();
+}
+
 QPoint PageView::contentAreaPosition() const
 {
     return QPoint(horizontalScrollBar()->value(), verticalScrollBar()->value());
@@ -4677,9 +4682,10 @@ void PageView::slotRelayoutPages()
     for (PageViewItem *item : std::as_const(d->items)) {
         // update internal page size (leaving a little margin in case of Fit* modes)
         updateItemSize(item, colWidth[cIdx] - kcolWidthMargin, viewportHeight - krowHeightMargin);
-        // find row's maximum height and column's max width
-        if (item->croppedWidth() + kcolWidthMargin > colWidth[cIdx]) {
-            colWidth[cIdx] = item->croppedWidth() + kcolWidthMargin;
+        // find row's maximum height and column's max width (including vibe card overhang)
+        const int vibeExtra = item->vibeCardsLeftOverhang() + item->vibeCardsRightOverhang();
+        if (item->croppedWidth() + kcolWidthMargin + vibeExtra > colWidth[cIdx]) {
+            colWidth[cIdx] = item->croppedWidth() + kcolWidthMargin + vibeExtra;
         }
         if (item->croppedHeight() + krowHeightMargin > rowHeight[rIdx]) {
             rowHeight[rIdx] = item->croppedHeight() + krowHeightMargin;
