@@ -24,7 +24,7 @@ public:
     bool open();
     void close();
 
-    int getOrCreatePaper(const QString &filePath);
+    int getOrCreatePaper(const QString &fileHash);
     void saveParagraphs(int paperId, int pageIdx, const QList<ParagraphData> &paragraphs);
     QList<ParagraphData> getParagraphs(int paperId, int pageIdx) const;
 

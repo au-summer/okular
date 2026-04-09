@@ -5,6 +5,7 @@
 
 #include "vibecontroller.h"
 
+#include <QCryptographicHash>
 #include <QDebug>
 #include <QFile>
 #include <QMessageBox>
@@ -60,10 +61,7 @@ void VibeController::toggleCardsVisible()
         return;
     }
 
-    const QString filePath = m_document->currentDocument().toLocalFile();
-    if (!filePath.isEmpty() && m_currentPaperId < 0) {
-        m_currentPaperId = m_db.getOrCreatePaper(filePath);
-    }
+    ensurePaperId();
 
     const auto items = m_pageView->items();
     for (auto *item : items) {
@@ -178,10 +176,7 @@ void VibeController::parseCurrentPage()
     const int pageIdx = m_document->currentPage();
 
     // Ensure paper is registered in DB
-    const QString filePath = m_document->currentDocument().toLocalFile();
-    if (!filePath.isEmpty() && m_currentPaperId < 0) {
-        m_currentPaperId = m_db.getOrCreatePaper(filePath);
-    }
+    ensurePaperId();
 
     // Check if we already have summary cards for this page (fully processed)
     if (m_currentPaperId >= 0 && loadCachedCardsForPage(pageIdx)) {
@@ -215,6 +210,7 @@ void VibeController::parseCurrentPage()
     }
 
     // No MinerU data at all — need to parse the whole document
+    const QString filePath = m_document->currentDocument().toLocalFile();
     if (filePath.isEmpty()) {
         qWarning() << "[VibeController] Cannot get local file path for MinerU parsing";
         return;
@@ -238,10 +234,7 @@ void VibeController::retryCurrentPage()
 
     const int pageIdx = m_document->currentPage();
 
-    const QString filePath = m_document->currentDocument().toLocalFile();
-    if (!filePath.isEmpty() && m_currentPaperId < 0) {
-        m_currentPaperId = m_db.getOrCreatePaper(filePath);
-    }
+    ensurePaperId();
 
     if (m_currentPaperId < 0) {
         m_pageView->displayMessage(QStringLiteral("No parsed data. Run Parse Current Page first."));
@@ -278,10 +271,7 @@ void VibeController::parseAllPages()
         return;
     }
 
-    const QString filePath = m_document->currentDocument().toLocalFile();
-    if (!filePath.isEmpty() && m_currentPaperId < 0) {
-        m_currentPaperId = m_db.getOrCreatePaper(filePath);
-    }
+    ensurePaperId();
 
     // Check if MinerU data exists
     bool anyPageHasData = false;
@@ -296,6 +286,7 @@ void VibeController::parseAllPages()
 
     if (!anyPageHasData) {
         // Need MinerU parse first, then parse all pages
+        const QString filePath = m_document->currentDocument().toLocalFile();
         if (filePath.isEmpty()) {
             qWarning() << "[VibeController] Cannot get local file path for MinerU parsing";
             return;
@@ -356,10 +347,7 @@ void VibeController::retryAllPages()
         return;
     }
 
-    const QString filePath = m_document->currentDocument().toLocalFile();
-    if (!filePath.isEmpty() && m_currentPaperId < 0) {
-        m_currentPaperId = m_db.getOrCreatePaper(filePath);
-    }
+    ensurePaperId();
 
     if (m_currentPaperId < 0) {
         m_pageView->displayMessage(QStringLiteral("No parsed data. Run Parse All Pages first."));
@@ -487,6 +475,25 @@ void VibeController::onMinerUError(const QString &error)
 void VibeController::onMinerUProgress(const QString &status)
 {
     m_pageView->displayMessage(status);
+}
+
+void VibeController::ensurePaperId()
+{
+    if (m_currentPaperId >= 0) {
+        return;
+    }
+    const QString filePath = m_document->currentDocument().toLocalFile();
+    if (filePath.isEmpty()) {
+        return;
+    }
+    QFile f(filePath);
+    if (!f.open(QIODevice::ReadOnly)) {
+        return;
+    }
+    QCryptographicHash hasher(QCryptographicHash::Sha256);
+    hasher.addData(&f);
+    const QString fileHash = QString::fromLatin1(hasher.result().toHex());
+    m_currentPaperId = m_db.getOrCreatePaper(fileHash);
 }
 
 void VibeController::ensurePdfData()

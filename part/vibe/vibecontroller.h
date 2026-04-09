@@ -54,6 +54,7 @@ private Q_SLOTS:
 
 private:
     bool loadCachedCardsForPage(int pageIdx);
+    void ensurePaperId();
     void ensurePdfData();
     void processPageWithLlm(int pageIdx, const QList<ParagraphData> &paragraphs);
     QMap<int, QList<ParagraphData>> getAllParagraphs() const;

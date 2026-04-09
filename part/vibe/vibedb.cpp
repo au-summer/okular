@@ -63,7 +63,7 @@ void VibeDB::createTables()
     q.exec(QStringLiteral(
         "CREATE TABLE IF NOT EXISTS papers ("
         "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
-        "  file_path TEXT UNIQUE NOT NULL,"
+        "  file_hash TEXT UNIQUE NOT NULL,"
         "  created_at TEXT DEFAULT (datetime('now')),"
         "  updated_at TEXT DEFAULT (datetime('now'))"
         ")"
@@ -116,17 +116,17 @@ void VibeDB::createTables()
     ));
 }
 
-int VibeDB::getOrCreatePaper(const QString &filePath)
+int VibeDB::getOrCreatePaper(const QString &fileHash)
 {
     QSqlQuery q(m_db);
-    q.prepare(QStringLiteral("SELECT id FROM papers WHERE file_path = ?"));
-    q.addBindValue(filePath);
+    q.prepare(QStringLiteral("SELECT id FROM papers WHERE file_hash = ?"));
+    q.addBindValue(fileHash);
     if (q.exec() && q.next()) {
         return q.value(0).toInt();
     }
 
-    q.prepare(QStringLiteral("INSERT INTO papers (file_path) VALUES (?)"));
-    q.addBindValue(filePath);
+    q.prepare(QStringLiteral("INSERT INTO papers (file_hash) VALUES (?)"));
+    q.addBindValue(fileHash);
     if (q.exec()) {
         return q.lastInsertId().toInt();
     }
