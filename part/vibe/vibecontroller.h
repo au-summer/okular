@@ -49,11 +49,14 @@ private Q_SLOTS:
     void onMinerUError(const QString &error);
     void onMinerUProgress(const QString &status);
     void onPageSummaryReady(int pageIdx, const QList<ParagraphLlmResult> &results);
+    void onAllPagesSummaryReady(const QMap<int, QList<ParagraphLlmResult>> &results);
     void onLlmError(const QString &error);
 
 private:
     bool loadCachedCardsForPage(int pageIdx);
+    void ensurePdfData();
     void processPageWithLlm(int pageIdx, const QList<ParagraphData> &paragraphs);
+    QMap<int, QList<ParagraphData>> getAllParagraphs() const;
     void createCardsForPage(int pageIdx, const QList<ParagraphData> &paragraphs);
     void clearCardsForPage(int pageIdx);
     void processNextQueuedPage();
@@ -74,6 +77,7 @@ private:
     bool m_parsingAllPages = false;
     bool m_cardsVisible = false;
     QString m_language = QStringLiteral("en");
+    QString m_processingMode = QStringLiteral("batch");
 };
 
 } // namespace Vibe

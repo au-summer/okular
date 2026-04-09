@@ -38,6 +38,7 @@ private:
     QSpinBox *m_summaryFontSizeSpin;
     QSpinBox *m_pointsFontSizeSpin;
     QComboBox *m_languageCombo;
+    QComboBox *m_processingModeCombo;
 };
 
 } // namespace Vibe

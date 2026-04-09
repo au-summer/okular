@@ -6,6 +6,7 @@
 #include "vibecontroller.h"
 
 #include <QDebug>
+#include <QFile>
 #include <QMessageBox>
 #include <QScrollBar>
 
@@ -31,6 +32,7 @@ VibeController::VibeController(Okular::Document *doc, PageView *pageView, QObjec
     , m_mineruClient(new MinerUClient(this))
 {
     connect(m_llmClient, &LlmClient::pageSummaryReady, this, &VibeController::onPageSummaryReady);
+    connect(m_llmClient, &LlmClient::allPagesSummaryReady, this, &VibeController::onAllPagesSummaryReady);
     connect(m_llmClient, &LlmClient::errorOccurred, this, &VibeController::onLlmError);
 
     connect(m_mineruClient, &MinerUClient::documentReady, this, &VibeController::onDocumentReady);
@@ -41,6 +43,7 @@ VibeController::VibeController(Okular::Document *doc, PageView *pageView, QObjec
 
     QSettings settings(QStringLiteral("okular-vibe"), QStringLiteral("okular-vibe"));
     m_language = settings.value(QStringLiteral("summaryLanguage"), QStringLiteral("en")).toString();
+    m_processingMode = settings.value(QStringLiteral("processingMode"), QStringLiteral("batch")).toString();
 }
 
 VibeController::~VibeController()
@@ -97,6 +100,8 @@ void VibeController::reloadConfig()
         m_language = newLanguage;
         llmConfig.language = m_language;
     }
+    m_processingMode = settings.value(QStringLiteral("processingMode"), QStringLiteral("batch")).toString();
+    llmConfig.processingMode = m_processingMode;
     m_llmClient->setConfig(llmConfig);
 
     // Reload MinerU config
@@ -302,23 +307,42 @@ void VibeController::parseAllPages()
         return;
     }
 
-    // MinerU data exists, build queue of pages without summary cards
-    m_allPagesQueue.clear();
+    // Gather pages that need LLM processing
+    QMap<int, QList<ParagraphData>> unprocessed;
     for (uint p = 0; p < m_document->pages(); ++p) {
-        if (!m_db.getParagraphs(m_currentPaperId, p).isEmpty()
-            && m_db.getSummaryCards(m_currentPaperId, p, m_language).isEmpty()) {
-            m_allPagesQueue.append(p);
+        auto paras = m_db.getParagraphs(m_currentPaperId, p);
+        if (!paras.isEmpty() && m_db.getSummaryCards(m_currentPaperId, p, m_language).isEmpty()) {
+            unprocessed[p] = paras;
         }
     }
 
-    if (m_allPagesQueue.isEmpty()) {
+    if (unprocessed.isEmpty()) {
         m_pageView->displayMessage(QStringLiteral("All pages already processed."));
         return;
     }
 
     m_parsingAllPages = true;
-    m_pageView->displayMessage(QStringLiteral("Parsing all pages: %1 pages remaining...").arg(m_allPagesQueue.size()));
-    processNextQueuedPage();
+    m_cardsVisible = true;
+
+    if (m_processingMode == QLatin1String("batch")) {
+        // Batch mode: single LLM request for all pages
+        ensurePdfData();
+        m_pageView->displayMessage(QStringLiteral("Sending %1 pages to LLM (batch)...").arg(unprocessed.size()));
+        // Show loading cards for all pages
+        for (auto it = unprocessed.constBegin(); it != unprocessed.constEnd(); ++it) {
+            clearCardsForPage(it.key());
+            createCardsForPage(it.key(), it.value());
+        }
+        m_llmClient->requestAllPagesSummary(unprocessed);
+    } else {
+        // Per-page mode: queue pages
+        m_allPagesQueue.clear();
+        for (auto it = unprocessed.constBegin(); it != unprocessed.constEnd(); ++it) {
+            m_allPagesQueue.append(it.key());
+        }
+        m_pageView->displayMessage(QStringLiteral("Parsing all pages: %1 pages remaining...").arg(m_allPagesQueue.size()));
+        processNextQueuedPage();
+    }
 }
 
 void VibeController::retryAllPages()
@@ -342,25 +366,40 @@ void VibeController::retryAllPages()
         return;
     }
 
-    // Delete LLM data and rebuild queue for all pages that have MinerU paragraphs
-    m_allPagesQueue.clear();
+    // Delete LLM data for all pages that have MinerU paragraphs
+    QMap<int, QList<ParagraphData>> toRetry;
     for (uint p = 0; p < m_document->pages(); ++p) {
         QList<ParagraphData> paragraphs = m_db.getParagraphs(m_currentPaperId, p);
         if (!paragraphs.isEmpty()) {
             m_db.deleteLlmDataForPage(m_currentPaperId, p, m_language);
             clearCardsForPage(p);
-            m_allPagesQueue.append(p);
+            toRetry[p] = paragraphs;
         }
     }
 
-    if (m_allPagesQueue.isEmpty()) {
+    if (toRetry.isEmpty()) {
         m_pageView->displayMessage(QStringLiteral("No pages with parsed data to retry."));
         return;
     }
 
     m_parsingAllPages = true;
-    m_pageView->displayMessage(QStringLiteral("Retrying all pages: %1 pages remaining...").arg(m_allPagesQueue.size()));
-    processNextQueuedPage();
+    m_cardsVisible = true;
+
+    if (m_processingMode == QLatin1String("batch")) {
+        ensurePdfData();
+        m_pageView->displayMessage(QStringLiteral("Retrying %1 pages (batch)...").arg(toRetry.size()));
+        for (auto it = toRetry.constBegin(); it != toRetry.constEnd(); ++it) {
+            createCardsForPage(it.key(), it.value());
+        }
+        m_llmClient->requestAllPagesSummary(toRetry);
+    } else {
+        m_allPagesQueue.clear();
+        for (auto it = toRetry.constBegin(); it != toRetry.constEnd(); ++it) {
+            m_allPagesQueue.append(it.key());
+        }
+        m_pageView->displayMessage(QStringLiteral("Retrying all pages: %1 pages remaining...").arg(m_allPagesQueue.size()));
+        processNextQueuedPage();
+    }
 }
 
 void VibeController::processNextQueuedPage()
@@ -392,17 +431,35 @@ void VibeController::onDocumentReady(const QMap<int, QList<ParagraphData>> &page
         }
     }
 
-    // If parsing all pages, build the queue and start
+    // If parsing all pages, start LLM processing
     if (m_parsingAllPages) {
-        m_allPagesQueue.clear();
+        // Filter to unprocessed pages
+        QMap<int, QList<ParagraphData>> unprocessed;
         for (auto it = pagesParagraphs.constBegin(); it != pagesParagraphs.constEnd(); ++it) {
             if (!it.value().isEmpty() && m_db.getSummaryCards(m_currentPaperId, it.key(), m_language).isEmpty()) {
-                m_allPagesQueue.append(it.key());
+                unprocessed[it.key()] = it.value();
             }
         }
-        std::sort(m_allPagesQueue.begin(), m_allPagesQueue.end());
-        m_pageView->displayMessage(QStringLiteral("Parsing all pages: %1 pages to process...").arg(m_allPagesQueue.size()));
-        processNextQueuedPage();
+
+        m_cardsVisible = true;
+
+        if (m_processingMode == QLatin1String("batch")) {
+            ensurePdfData();
+            m_pageView->displayMessage(QStringLiteral("Sending %1 pages to LLM (batch)...").arg(unprocessed.size()));
+            for (auto it = unprocessed.constBegin(); it != unprocessed.constEnd(); ++it) {
+                clearCardsForPage(it.key());
+                createCardsForPage(it.key(), it.value());
+            }
+            m_llmClient->requestAllPagesSummary(unprocessed);
+        } else {
+            m_allPagesQueue.clear();
+            for (auto it = unprocessed.constBegin(); it != unprocessed.constEnd(); ++it) {
+                m_allPagesQueue.append(it.key());
+            }
+            std::sort(m_allPagesQueue.begin(), m_allPagesQueue.end());
+            m_pageView->displayMessage(QStringLiteral("Parsing all pages: %1 pages to process...").arg(m_allPagesQueue.size()));
+            processNextQueuedPage();
+        }
         return;
     }
 
@@ -432,6 +489,37 @@ void VibeController::onMinerUProgress(const QString &status)
     m_pageView->displayMessage(status);
 }
 
+void VibeController::ensurePdfData()
+{
+    if (!m_llmClient->pdfData().isEmpty()) {
+        return;
+    }
+    const QString filePath = m_document->currentDocument().toLocalFile();
+    if (filePath.isEmpty()) {
+        return;
+    }
+    QFile f(filePath);
+    if (f.open(QIODevice::ReadOnly)) {
+        m_llmClient->setPdfData(f.readAll().toBase64());
+        qDebug() << "[VibeController] PDF data cached for LLM requests";
+    }
+}
+
+QMap<int, QList<ParagraphData>> VibeController::getAllParagraphs() const
+{
+    QMap<int, QList<ParagraphData>> result;
+    if (m_currentPaperId < 0 || !m_document) {
+        return result;
+    }
+    for (uint p = 0; p < m_document->pages(); ++p) {
+        auto paras = m_db.getParagraphs(m_currentPaperId, p);
+        if (!paras.isEmpty()) {
+            result[p] = paras;
+        }
+    }
+    return result;
+}
+
 void VibeController::processPageWithLlm(int pageIdx, const QList<ParagraphData> &paragraphs)
 {
     m_cardsVisible = true;
@@ -443,6 +531,9 @@ void VibeController::processPageWithLlm(int pageIdx, const QList<ParagraphData> 
     // Show loading cards
     clearCardsForPage(pageIdx);
     createCardsForPage(pageIdx, paragraphs); // will show "Summarizing..." since summary is empty
+
+    // Ensure PDF data is cached for the LLM request
+    ensurePdfData();
 
     // Send to LLM
     m_llmClient->requestPageSummary(pageIdx, paragraphs);
@@ -486,6 +577,50 @@ void VibeController::onPageSummaryReady(int pageIdx, const QList<ParagraphLlmRes
     if (m_parsingAllPages) {
         processNextQueuedPage();
     }
+}
+
+void VibeController::onAllPagesSummaryReady(const QMap<int, QList<ParagraphLlmResult>> &results)
+{
+    qDebug() << "[VibeController] Received batch LLM results for" << results.size() << "pages";
+
+    for (auto it = results.constBegin(); it != results.constEnd(); ++it) {
+        int pageIdx = it.key();
+        const auto &pageResults = it.value();
+
+        // Load paragraphs from DB for this page
+        QList<ParagraphData> paragraphs = m_db.getParagraphs(m_currentPaperId, pageIdx);
+
+        // Merge LLM results
+        for (auto &para : paragraphs) {
+            for (const auto &r : pageResults) {
+                if (r.paragraphIdx == para.paragraphIdx) {
+                    para.summary = r.paragraphSummary;
+                    para.points = r.points;
+                    break;
+                }
+            }
+        }
+
+        // Save to DB
+        if (m_currentPaperId >= 0) {
+            for (const auto &para : paragraphs) {
+                if (!para.summary.isEmpty()) {
+                    int paragraphDbId = m_db.getParagraphDbId(m_currentPaperId, pageIdx, para.paragraphIdx);
+                    if (paragraphDbId >= 0) {
+                        m_db.savePoints(paragraphDbId, m_language, para.points);
+                        m_db.saveSummaryCard(m_currentPaperId, pageIdx, paragraphDbId, para.bbox, para.isLeftColumn, m_language, para.summary);
+                    }
+                }
+            }
+        }
+
+        // Update cards
+        clearCardsForPage(pageIdx);
+        createCardsForPage(pageIdx, paragraphs);
+    }
+
+    m_parsingAllPages = false;
+    m_pageView->displayMessage(QStringLiteral("All %1 pages processed.").arg(results.size()));
 }
 
 void VibeController::onLlmError(const QString &error)

@@ -80,6 +80,12 @@ VibeConfigDialog::VibeConfigDialog(QWidget *parent)
     m_languageCombo->addItem(QStringLiteral("Chinese"), QStringLiteral("zh"));
     form->addRow(tr("Summary language:"), m_languageCombo);
 
+    // Processing mode
+    m_processingModeCombo = new QComboBox(this);
+    m_processingModeCombo->addItem(tr("All pages at once"), QStringLiteral("batch"));
+    m_processingModeCombo->addItem(tr("Page by page"), QStringLiteral("per_page"));
+    form->addRow(tr("Processing mode:"), m_processingModeCombo);
+
     layout->addLayout(form);
 
     auto *hint = new QLabel(tr("Environment variables take precedence over these settings."), this);
@@ -118,6 +124,12 @@ void VibeConfigDialog::loadSettings()
     if (langIdx >= 0) {
         m_languageCombo->setCurrentIndex(langIdx);
     }
+
+    const QString mode = settings.value(QStringLiteral("processingMode"), QStringLiteral("batch")).toString();
+    int modeIdx = m_processingModeCombo->findData(mode);
+    if (modeIdx >= 0) {
+        m_processingModeCombo->setCurrentIndex(modeIdx);
+    }
 }
 
 void VibeConfigDialog::saveSettings()
@@ -130,6 +142,7 @@ void VibeConfigDialog::saveSettings()
     settings.setValue(QStringLiteral("summaryFontSize"), m_summaryFontSizeSpin->value());
     settings.setValue(QStringLiteral("pointsFontSize"), m_pointsFontSizeSpin->value());
     settings.setValue(QStringLiteral("summaryLanguage"), m_languageCombo->currentData().toString());
+    settings.setValue(QStringLiteral("processingMode"), m_processingModeCombo->currentData().toString());
 }
 
 QString VibeConfigDialog::openAiApiKey() const

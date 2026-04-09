@@ -165,7 +165,7 @@ void VibeDB::saveParagraphs(int paperId, int pageIdx, const QList<ParagraphData>
     }
 }
 
-QList<ParagraphData> VibeDB::getParagraphs(int paperId, int pageIdx)
+QList<ParagraphData> VibeDB::getParagraphs(int paperId, int pageIdx) const
 {
     QList<ParagraphData> result;
     QSqlQuery q(m_db);
@@ -201,7 +201,7 @@ QList<ParagraphData> VibeDB::getParagraphs(int paperId, int pageIdx)
     return result;
 }
 
-int VibeDB::getParagraphDbId(int paperId, int pageIdx, int paragraphIdx)
+int VibeDB::getParagraphDbId(int paperId, int pageIdx, int paragraphIdx) const
 {
     QSqlQuery q(m_db);
     q.prepare(QStringLiteral(
@@ -243,7 +243,7 @@ void VibeDB::savePoints(int paragraphId, const QString &language, const QList<Po
     }
 }
 
-QList<PointData> VibeDB::getPoints(int paragraphId, const QString &language)
+QList<PointData> VibeDB::getPoints(int paragraphId, const QString &language) const
 {
     QList<PointData> result;
     QSqlQuery q(m_db);
@@ -322,7 +322,7 @@ void VibeDB::saveSummaryCard(int paperId, int pageIdx, int paragraphId, const Ok
     }
 }
 
-QList<SummaryCardData> VibeDB::getSummaryCards(int paperId, int pageIdx, const QString &language)
+QList<SummaryCardData> VibeDB::getSummaryCards(int paperId, int pageIdx, const QString &language) const
 {
     QList<SummaryCardData> result;
     QSqlQuery q(m_db);

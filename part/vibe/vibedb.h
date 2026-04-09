@@ -26,15 +26,15 @@ public:
 
     int getOrCreatePaper(const QString &filePath);
     void saveParagraphs(int paperId, int pageIdx, const QList<ParagraphData> &paragraphs);
-    QList<ParagraphData> getParagraphs(int paperId, int pageIdx);
+    QList<ParagraphData> getParagraphs(int paperId, int pageIdx) const;
 
     void savePoints(int paragraphId, const QString &language, const QList<PointData> &points);
-    QList<PointData> getPoints(int paragraphId, const QString &language);
+    QList<PointData> getPoints(int paragraphId, const QString &language) const;
 
     void saveSummaryCard(int paperId, int pageIdx, int paragraphId, const Okular::NormalizedRect &anchor, bool isLeftColumn, const QString &language, const QString &paragraphSummary);
-    QList<SummaryCardData> getSummaryCards(int paperId, int pageIdx, const QString &language);
+    QList<SummaryCardData> getSummaryCards(int paperId, int pageIdx, const QString &language) const;
 
-    int getParagraphDbId(int paperId, int pageIdx, int paragraphIdx);
+    int getParagraphDbId(int paperId, int pageIdx, int paragraphIdx) const;
     void deleteLlmDataForPage(int paperId, int pageIdx, const QString &language);
 
 private:
