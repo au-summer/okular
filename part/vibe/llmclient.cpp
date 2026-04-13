@@ -90,16 +90,38 @@ QString LlmClient::buildUserPrompt(int targetPageIdx, const QList<ParagraphData>
         "The PDF of the full paper is attached above.\n"
         "Analyze ONLY the following paragraphs from page %1.\n\n"
         "For each paragraph, provide:\n"
-        "1. A concise paragraph_summary (5-100 characters)\n"
-        "2. Split the paragraph into logical points (point_split: groups of sentence indices)\n"
-        "3. A summary for each point (point_summaries: 5-100 characters each)\n\n"
-        "Return a JSON object with this exact format:\n"
+        "1. paragraph_summary: A concise summary of the paragraph (10 words or less).\n"
+        "2. point_summaries: An array of concise summaries (10 words or less each), one per logical point in the paragraph.\n"
+        "   - Division principle: Aggressively merge content with similar semantics, same sub-topic, or cause-effect relationships. "
+        "Only split when the paragraph addresses distinctly different sub-topics.\n"
+        "   - Ideally 2-4 points. A single-meaning paragraph may have 1 point. Complex paragraphs may exceed 4.\n\n"
+        "Example:\n"
+        "Input paragraph:\n"
+        "\"The goal of reducing sequential computation also forms the foundation of the Extended Neural GPU, "
+        "ByteNet and ConvS2S, all of which use convolutional neural networks as basic building block. "
+        "In these models, the number of operations required to relate signals from two arbitrary positions "
+        "grows in the distance between positions. This makes it more difficult to learn dependencies between "
+        "distant positions. In the Transformer this is reduced to a constant number of operations.\"\n\n"
+        "Output:\n"
+        "{\n"
+        "  \"paragraphs\": [\n"
+        "    {\n"
+        "      \"id\": \"0_0\",\n"
+        "      \"paragraph_summary\": \"Transformer vs CNN advantages\",\n"
+        "      \"point_summaries\": [\n"
+        "        \"CNNs reduce sequential computation\",\n"
+        "        \"CNNs struggle with long-range dependencies\",\n"
+        "        \"Transformer uses constant operations\"\n"
+        "      ]\n"
+        "    }\n"
+        "  ]\n"
+        "}\n\n"
+        "Return a JSON object with this format:\n"
         "{\n"
         "  \"paragraphs\": [\n"
         "    {\n"
         "      \"id\": \"%1_<paragraphIdx>\",\n"
         "      \"paragraph_summary\": \"...\",\n"
-        "      \"point_split\": [[0,1,2], [3,4]],\n"
         "      \"point_summaries\": [\"...\", \"...\"]\n"
         "    }\n"
         "  ]\n"
@@ -120,10 +142,33 @@ QString LlmClient::buildBatchPrompt(const QMap<int, QList<ParagraphData>> &allPa
         "The PDF of the full paper is attached above.\n"
         "Analyze the following paragraphs from each page.\n\n"
         "For each paragraph, provide:\n"
-        "1. A concise paragraph_summary (5-100 characters)\n"
-        "2. Split the paragraph into logical points (point_split: groups of sentence indices)\n"
-        "3. A summary for each point (point_summaries: 5-100 characters each)\n\n"
-        "Return a JSON object with this exact format:\n"
+        "1. paragraph_summary: A concise summary of the paragraph (10 words or less).\n"
+        "2. point_summaries: An array of concise summaries (10 words or less each), one per logical point in the paragraph.\n"
+        "   - Division principle: Aggressively merge content with similar semantics, same sub-topic, or cause-effect relationships. "
+        "Only split when the paragraph addresses distinctly different sub-topics.\n"
+        "   - Ideally 2-4 points. A single-meaning paragraph may have 1 point. Complex paragraphs may exceed 4.\n\n"
+        "Example:\n"
+        "Input paragraph:\n"
+        "\"The goal of reducing sequential computation also forms the foundation of the Extended Neural GPU, "
+        "ByteNet and ConvS2S, all of which use convolutional neural networks as basic building block. "
+        "In these models, the number of operations required to relate signals from two arbitrary positions "
+        "grows in the distance between positions. This makes it more difficult to learn dependencies between "
+        "distant positions. In the Transformer this is reduced to a constant number of operations.\"\n\n"
+        "Output:\n"
+        "{\n"
+        "  \"paragraphs\": [\n"
+        "    {\n"
+        "      \"id\": \"0_0\",\n"
+        "      \"paragraph_summary\": \"Transformer vs CNN advantages\",\n"
+        "      \"point_summaries\": [\n"
+        "        \"CNNs reduce sequential computation\",\n"
+        "        \"CNNs struggle with long-range dependencies\",\n"
+        "        \"Transformer uses constant operations\"\n"
+        "      ]\n"
+        "    }\n"
+        "  ]\n"
+        "}\n\n"
+        "Return a JSON object with this format:\n"
         "{\n"
         "  \"pages\": [\n"
         "    {\n"
@@ -132,7 +177,6 @@ QString LlmClient::buildBatchPrompt(const QMap<int, QList<ParagraphData>> &allPa
         "        {\n"
         "          \"id\": \"0_<paragraphIdx>\",\n"
         "          \"paragraph_summary\": \"...\",\n"
-        "          \"point_split\": [[0,1,2], [3,4]],\n"
         "          \"point_summaries\": [\"...\", \"...\"]\n"
         "        }\n"
         "      ]\n"
@@ -220,7 +264,8 @@ void LlmClient::requestPageSummary(int pageIdx, const QList<ParagraphData> &para
     responseFormat[QStringLiteral("type")] = QStringLiteral("json_object");
     body[QStringLiteral("response_format")] = responseFormat;
 
-    body[QStringLiteral("temperature")] = 0.3;
+    body[QStringLiteral("temperature")] = 1.0;
+    body[QStringLiteral("top_p")] = 0.95;
 
     m_nam->post(request, QJsonDocument(body).toJson());
 }
@@ -268,7 +313,8 @@ void LlmClient::requestAllPagesSummary(const QMap<int, QList<ParagraphData>> &al
     responseFormat[QStringLiteral("type")] = QStringLiteral("json_object");
     body[QStringLiteral("response_format")] = responseFormat;
 
-    body[QStringLiteral("temperature")] = 0.3;
+    body[QStringLiteral("temperature")] = 1.0;
+    body[QStringLiteral("top_p")] = 0.95;
 
     m_nam->post(request, QJsonDocument(body).toJson());
 }
@@ -347,21 +393,12 @@ QList<ParagraphLlmResult> LlmClient::parseResponse(const QByteArray &data) const
 
         r.paragraphSummary = pObj[QStringLiteral("paragraph_summary")].toString();
 
-        QJsonArray pointSplit = pObj[QStringLiteral("point_split")].toArray();
         QJsonArray pointSummaries = pObj[QStringLiteral("point_summaries")].toArray();
 
         for (int i = 0; i < pointSummaries.size(); ++i) {
             PointData pt;
             pt.pointIdx = i;
             pt.summary = pointSummaries[i].toString();
-
-            if (i < pointSplit.size()) {
-                QJsonArray indices = pointSplit[i].toArray();
-                for (const auto &idx : indices) {
-                    pt.sentenceIndices.append(idx.toInt());
-                }
-            }
-
             r.points.append(pt);
         }
 
@@ -406,21 +443,12 @@ QMap<int, QList<ParagraphLlmResult>> LlmClient::parseBatchResponse(const QByteAr
 
             r.paragraphSummary = pObj[QStringLiteral("paragraph_summary")].toString();
 
-            QJsonArray pointSplit = pObj[QStringLiteral("point_split")].toArray();
             QJsonArray pointSummaries = pObj[QStringLiteral("point_summaries")].toArray();
 
             for (int i = 0; i < pointSummaries.size(); ++i) {
                 PointData pt;
                 pt.pointIdx = i;
                 pt.summary = pointSummaries[i].toString();
-
-                if (i < pointSplit.size()) {
-                    QJsonArray indices = pointSplit[i].toArray();
-                    for (const auto &idx : indices) {
-                        pt.sentenceIndices.append(idx.toInt());
-                    }
-                }
-
                 r.points.append(pt);
             }
 
