@@ -45,6 +45,7 @@ Q_SIGNALS:
     void pageSummaryReady(int pageIdx, const QList<ParagraphLlmResult> &results);
     void allPagesSummaryReady(const QMap<int, QList<ParagraphLlmResult>> &results);
     void errorOccurred(const QString &msg);
+    void pageErrorOccurred(int pageIdx, const QString &msg);
 
 private Q_SLOTS:
     void onReplyFinished(QNetworkReply *reply);
@@ -54,16 +55,19 @@ private:
     QString buildBatchPrompt(const QMap<int, QList<ParagraphData>> &allParagraphs) const;
     QJsonArray buildUserContent(const QString &textPrompt) const;
     QString buildSystemContent() const;
+    QJsonObject buildPageResponseFormat() const;
+    QJsonObject buildBatchResponseFormat() const;
 
     QList<ParagraphLlmResult> parseResponse(const QByteArray &data) const;
     QMap<int, QList<ParagraphLlmResult>> parseBatchResponse(const QByteArray &data) const;
     QString extractContentFromResponse(const QByteArray &data) const;
+    bool validatePageResults(const QList<ParagraphLlmResult> &results) const;
+
+    static constexpr int REQUEST_TIMEOUT_MS = 4 * 60 * 1000; // 4 minutes
 
     QNetworkAccessManager *m_nam;
     Config m_config;
     QByteArray m_pdfBase64;
-    int m_pendingPageIdx = -1;
-    bool m_batchMode = false;
 };
 
 } // namespace Vibe

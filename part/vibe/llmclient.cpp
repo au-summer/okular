@@ -224,17 +224,14 @@ QJsonArray LlmClient::buildUserContent(const QString &textPrompt) const
 void LlmClient::requestPageSummary(int pageIdx, const QList<ParagraphData> &paragraphs)
 {
     if (m_config.apiKey.isEmpty()) {
-        Q_EMIT errorOccurred(QStringLiteral("No API key configured. Set VIBE_OPENAI_API_KEY environment variable."));
+        Q_EMIT pageErrorOccurred(pageIdx, QStringLiteral("No API key configured. Set VIBE_OPENAI_API_KEY environment variable."));
         return;
     }
 
     if (paragraphs.isEmpty()) {
-        Q_EMIT errorOccurred(QStringLiteral("No paragraphs to summarize."));
+        Q_EMIT pageErrorOccurred(pageIdx, QStringLiteral("No paragraphs to summarize."));
         return;
     }
-
-    m_pendingPageIdx = pageIdx;
-    m_batchMode = false;
 
     QUrl url = m_config.baseUrl;
     url.setPath(url.path() + QStringLiteral("/chat/completions"));
@@ -242,6 +239,7 @@ void LlmClient::requestPageSummary(int pageIdx, const QList<ParagraphData> &para
     QNetworkRequest request(url);
     request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
     request.setRawHeader("Authorization", QStringLiteral("Bearer %1").arg(m_config.apiKey).toUtf8());
+    request.setTransferTimeout(REQUEST_TIMEOUT_MS);
 
     QJsonObject body;
     body[QStringLiteral("model")] = m_config.model;
@@ -259,15 +257,15 @@ void LlmClient::requestPageSummary(int pageIdx, const QList<ParagraphData> &para
     messages.append(userMsg);
 
     body[QStringLiteral("messages")] = messages;
-
-    QJsonObject responseFormat;
-    responseFormat[QStringLiteral("type")] = QStringLiteral("json_object");
-    body[QStringLiteral("response_format")] = responseFormat;
+    body[QStringLiteral("response_format")] = buildPageResponseFormat();
 
     body[QStringLiteral("temperature")] = 1.0;
     body[QStringLiteral("top_p")] = 0.95;
 
-    m_nam->post(request, QJsonDocument(body).toJson());
+    QNetworkReply *reply = m_nam->post(request, QJsonDocument(body).toJson());
+    reply->setProperty("vibe_page_idx", pageIdx);
+    reply->setProperty("vibe_batch", false);
+    reply->setProperty("vibe_para_count", paragraphs.size());
 }
 
 void LlmClient::requestAllPagesSummary(const QMap<int, QList<ParagraphData>> &allParagraphs)
@@ -282,15 +280,13 @@ void LlmClient::requestAllPagesSummary(const QMap<int, QList<ParagraphData>> &al
         return;
     }
 
-    m_pendingPageIdx = -1;
-    m_batchMode = true;
-
     QUrl url = m_config.baseUrl;
     url.setPath(url.path() + QStringLiteral("/chat/completions"));
 
     QNetworkRequest request(url);
     request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
     request.setRawHeader("Authorization", QStringLiteral("Bearer %1").arg(m_config.apiKey).toUtf8());
+    request.setTransferTimeout(REQUEST_TIMEOUT_MS);
 
     QJsonObject body;
     body[QStringLiteral("model")] = m_config.model;
@@ -308,29 +304,36 @@ void LlmClient::requestAllPagesSummary(const QMap<int, QList<ParagraphData>> &al
     messages.append(userMsg);
 
     body[QStringLiteral("messages")] = messages;
-
-    QJsonObject responseFormat;
-    responseFormat[QStringLiteral("type")] = QStringLiteral("json_object");
-    body[QStringLiteral("response_format")] = responseFormat;
+    body[QStringLiteral("response_format")] = buildBatchResponseFormat();
 
     body[QStringLiteral("temperature")] = 1.0;
     body[QStringLiteral("top_p")] = 0.95;
 
-    m_nam->post(request, QJsonDocument(body).toJson());
+    QNetworkReply *reply = m_nam->post(request, QJsonDocument(body).toJson());
+    reply->setProperty("vibe_batch", true);
+    reply->setProperty("vibe_page_idx", -1);
 }
 
 void LlmClient::onReplyFinished(QNetworkReply *reply)
 {
     reply->deleteLater();
 
+    const bool isBatch = reply->property("vibe_batch").toBool();
+    const int pageIdx = reply->property("vibe_page_idx").toInt();
+
     if (reply->error() != QNetworkReply::NoError) {
-        Q_EMIT errorOccurred(QStringLiteral("HTTP error: %1").arg(reply->errorString()));
+        const QString errMsg = QStringLiteral("HTTP error: %1").arg(reply->errorString());
+        if (isBatch) {
+            Q_EMIT errorOccurred(errMsg);
+        } else {
+            Q_EMIT pageErrorOccurred(pageIdx, errMsg);
+        }
         return;
     }
 
     const QByteArray data = reply->readAll();
 
-    if (m_batchMode) {
+    if (isBatch) {
         const auto results = parseBatchResponse(data);
         if (results.isEmpty()) {
             Q_EMIT errorOccurred(QStringLiteral("Failed to parse LLM batch response."));
@@ -339,11 +342,11 @@ void LlmClient::onReplyFinished(QNetworkReply *reply)
         Q_EMIT allPagesSummaryReady(results);
     } else {
         const auto results = parseResponse(data);
-        if (results.isEmpty()) {
-            Q_EMIT errorOccurred(QStringLiteral("Failed to parse LLM response."));
+        if (!validatePageResults(results)) {
+            Q_EMIT pageErrorOccurred(pageIdx, QStringLiteral("LLM returned invalid or incomplete results."));
             return;
         }
-        Q_EMIT pageSummaryReady(m_pendingPageIdx, results);
+        Q_EMIT pageSummaryReady(pageIdx, results);
     }
 }
 
@@ -459,4 +462,139 @@ QMap<int, QList<ParagraphLlmResult>> LlmClient::parseBatchResponse(const QByteAr
     }
 
     return results;
+}
+
+bool LlmClient::validatePageResults(const QList<ParagraphLlmResult> &results) const
+{
+    if (results.isEmpty()) {
+        return false;
+    }
+    for (const auto &r : results) {
+        if (r.paragraphSummary.isEmpty()) {
+            return false;
+        }
+        if (r.points.isEmpty()) {
+            return false;
+        }
+    }
+    return true;
+}
+
+QJsonObject LlmClient::buildPageResponseFormat() const
+{
+    QJsonObject idProp;
+    idProp[QStringLiteral("type")] = QStringLiteral("string");
+
+    QJsonObject summaryProp;
+    summaryProp[QStringLiteral("type")] = QStringLiteral("string");
+
+    QJsonObject pointItemSchema;
+    pointItemSchema[QStringLiteral("type")] = QStringLiteral("string");
+
+    QJsonObject pointsProp;
+    pointsProp[QStringLiteral("type")] = QStringLiteral("array");
+    pointsProp[QStringLiteral("items")] = pointItemSchema;
+
+    QJsonObject paragraphProps;
+    paragraphProps[QStringLiteral("id")] = idProp;
+    paragraphProps[QStringLiteral("paragraph_summary")] = summaryProp;
+    paragraphProps[QStringLiteral("point_summaries")] = pointsProp;
+
+    QJsonObject paragraphItem;
+    paragraphItem[QStringLiteral("type")] = QStringLiteral("object");
+    paragraphItem[QStringLiteral("properties")] = paragraphProps;
+    paragraphItem[QStringLiteral("required")] = QJsonArray({QStringLiteral("id"), QStringLiteral("paragraph_summary"), QStringLiteral("point_summaries")});
+    paragraphItem[QStringLiteral("additionalProperties")] = false;
+
+    QJsonObject paragraphsArray;
+    paragraphsArray[QStringLiteral("type")] = QStringLiteral("array");
+    paragraphsArray[QStringLiteral("items")] = paragraphItem;
+
+    QJsonObject rootProps;
+    rootProps[QStringLiteral("paragraphs")] = paragraphsArray;
+
+    QJsonObject schema;
+    schema[QStringLiteral("type")] = QStringLiteral("object");
+    schema[QStringLiteral("properties")] = rootProps;
+    schema[QStringLiteral("required")] = QJsonArray({QStringLiteral("paragraphs")});
+    schema[QStringLiteral("additionalProperties")] = false;
+
+    QJsonObject jsonSchema;
+    jsonSchema[QStringLiteral("name")] = QStringLiteral("PageSummaryOutput");
+    jsonSchema[QStringLiteral("strict")] = true;
+    jsonSchema[QStringLiteral("schema")] = schema;
+
+    QJsonObject responseFormat;
+    responseFormat[QStringLiteral("type")] = QStringLiteral("json_schema");
+    responseFormat[QStringLiteral("json_schema")] = jsonSchema;
+
+    return responseFormat;
+}
+
+QJsonObject LlmClient::buildBatchResponseFormat() const
+{
+    QJsonObject idProp;
+    idProp[QStringLiteral("type")] = QStringLiteral("string");
+
+    QJsonObject summaryProp;
+    summaryProp[QStringLiteral("type")] = QStringLiteral("string");
+
+    QJsonObject pointItemSchema;
+    pointItemSchema[QStringLiteral("type")] = QStringLiteral("string");
+
+    QJsonObject pointsProp;
+    pointsProp[QStringLiteral("type")] = QStringLiteral("array");
+    pointsProp[QStringLiteral("items")] = pointItemSchema;
+
+    QJsonObject paragraphProps;
+    paragraphProps[QStringLiteral("id")] = idProp;
+    paragraphProps[QStringLiteral("paragraph_summary")] = summaryProp;
+    paragraphProps[QStringLiteral("point_summaries")] = pointsProp;
+
+    QJsonObject paragraphItem;
+    paragraphItem[QStringLiteral("type")] = QStringLiteral("object");
+    paragraphItem[QStringLiteral("properties")] = paragraphProps;
+    paragraphItem[QStringLiteral("required")] = QJsonArray({QStringLiteral("id"), QStringLiteral("paragraph_summary"), QStringLiteral("point_summaries")});
+    paragraphItem[QStringLiteral("additionalProperties")] = false;
+
+    QJsonObject paragraphsArray;
+    paragraphsArray[QStringLiteral("type")] = QStringLiteral("array");
+    paragraphsArray[QStringLiteral("items")] = paragraphItem;
+
+    QJsonObject pageIdxProp;
+    pageIdxProp[QStringLiteral("type")] = QStringLiteral("integer");
+
+    QJsonObject pageProps;
+    pageProps[QStringLiteral("page_idx")] = pageIdxProp;
+    pageProps[QStringLiteral("paragraphs")] = paragraphsArray;
+
+    QJsonObject pageItem;
+    pageItem[QStringLiteral("type")] = QStringLiteral("object");
+    pageItem[QStringLiteral("properties")] = pageProps;
+    pageItem[QStringLiteral("required")] = QJsonArray({QStringLiteral("page_idx"), QStringLiteral("paragraphs")});
+    pageItem[QStringLiteral("additionalProperties")] = false;
+
+    QJsonObject pagesArray;
+    pagesArray[QStringLiteral("type")] = QStringLiteral("array");
+    pagesArray[QStringLiteral("items")] = pageItem;
+
+    QJsonObject rootProps;
+    rootProps[QStringLiteral("pages")] = pagesArray;
+
+    QJsonObject schema;
+    schema[QStringLiteral("type")] = QStringLiteral("object");
+    schema[QStringLiteral("properties")] = rootProps;
+    schema[QStringLiteral("required")] = QJsonArray({QStringLiteral("pages")});
+    schema[QStringLiteral("additionalProperties")] = false;
+
+    QJsonObject jsonSchema;
+    jsonSchema[QStringLiteral("name")] = QStringLiteral("BatchSummaryOutput");
+    jsonSchema[QStringLiteral("strict")] = true;
+    jsonSchema[QStringLiteral("schema")] = schema;
+
+    QJsonObject responseFormat;
+    responseFormat[QStringLiteral("type")] = QStringLiteral("json_schema");
+    responseFormat[QStringLiteral("json_schema")] = jsonSchema;
+
+    return responseFormat;
 }

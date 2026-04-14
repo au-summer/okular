@@ -51,6 +51,7 @@ private Q_SLOTS:
     void onPageSummaryReady(int pageIdx, const QList<ParagraphLlmResult> &results);
     void onAllPagesSummaryReady(const QMap<int, QList<ParagraphLlmResult>> &results);
     void onLlmError(const QString &error);
+    void onPageLlmError(int pageIdx, const QString &error);
 
 private:
     bool loadCachedCardsForPage(int pageIdx);
@@ -60,7 +61,10 @@ private:
     QMap<int, QList<ParagraphData>> getAllParagraphs() const;
     void createCardsForPage(int pageIdx, const QList<ParagraphData> &paragraphs);
     void clearCardsForPage(int pageIdx);
-    void processNextQueuedPage();
+    void dispatchQueuedPages();
+
+    static constexpr int MAX_CONCURRENCY = 5;
+    static constexpr int MAX_RETRIES = 2;
 
     Okular::Document *m_document;
     PageView *m_pageView;
@@ -68,10 +72,12 @@ private:
     LlmClient *m_llmClient;
     MinerUClient *m_mineruClient;
     int m_currentPaperId = -1;
-    int m_pendingLlmPageIdx = -1;
+    int m_pendingMinerUPageIdx = -1;
 
-    // Paragraphs waiting for LLM results
-    QList<ParagraphData> m_pendingParagraphs;
+    // Concurrent LLM request tracking
+    QMap<int, QList<ParagraphData>> m_inFlightPages;
+    QMap<int, int> m_retryCount;
+    int m_activeRequestCount = 0;
 
     // Parse-all-pages state
     QList<int> m_allPagesQueue;
